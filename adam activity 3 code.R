@@ -1,3 +1,5 @@
+#test comment 
+
 #read data
 setwd("C:/Users/adam/OneDrive/School/AU Business Intelligence/RStudio/")
 data = read.csv("tldata2.csv")
