@@ -22,6 +22,15 @@ knitr::opts_chunk$set(echo = TRUE)
 * Try to Predict/Classify if a player is gonna support
 * Try to Predict a players Rank
 
+```{r install packages}
+install.packages("rpart.plot")
+```
+
+```{r load packages}
+library(rpart.plot)
+```
+
+
 
 # Data
 ```{r}
@@ -128,9 +137,10 @@ str(data_normalized, give.attr=F)
 # Decision Tree
 
 ```{r}
+
+set.seed(1)
+cartfittrain = rpart(income~., dat=train, method="class")
 rpart.plot(cartfit)
-rpart.plot(cartfitMinMaxNormalized)
-rpart.plot(carFitMinMAxNormalizedAll)
 ```
 
 
