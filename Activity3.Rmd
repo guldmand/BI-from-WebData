@@ -175,10 +175,10 @@ train_without_username = train
 train_without_username$Username = NULL
 
 
-
 set.seed(1)
 cartfittrain = rpart(Supporter.Status.~., dat=train_without_username, method="class")
 #control=rpart.control(cp=0.0005)
+#min-splits
 rpart.plot(cartfittrain)
 ```
 
