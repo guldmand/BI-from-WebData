@@ -236,7 +236,7 @@ knitr::opts_chunk$set(echo = TRUE)
 * Try to Predict a players Rank
 
 ```{r install packages}
-install.packages("rpart.plot")
+#install.packages("rpart.plot")
 ```
 
 ```{r load packages}
