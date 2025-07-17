@@ -40,15 +40,15 @@ for (i in 1:length(levels(data_normalized$Rank))) {
     data_normalized$Rank == levels(data_normalized$Rank)[i], #select rows matching rank
     ncol(data_normalized)] = 1 #select last column (just added)
   
-  varname = sprintf( "flag%srank", levels(data_normalized$Rank)[i] )
-  varname = sub("+", "P", varname, fixed=T) #fixed=T treats '+' literal
-  varname = sub("-", "M", varname, fixed=T)
+  varname = sprintf( "flag%sRank", levels(data_normalized$Rank)[i] )
+  varname = sub("+", "Plus", varname, fixed=T) #fixed=T treats '+' literal
+  varname = sub("-", "Minus", varname, fixed=T)
   names(data_normalized)[ ncol(data_normalized) ] = varname
 }
 
 # remove orig rank var and remove one flag
 data_normalized$Rank = NULL
-data_normalized$flagDrank = NULL
+data_normalized$flagDRank = NULL
 
 #remove unneeded variables
 data_normalized$Username   = NULL
@@ -100,7 +100,7 @@ for (i in c(1,2,3,5,10,15,20,30)) {
 library("neuralnet")
 neuralnet2 = neuralnet(Supporter.Status. ~ ., data=train, hidden=3, thresh=0.01, rep=1, lifesign='full')
 #plot(neuralnet2)
-#plot(neuralnet2, show.weights=F)
+plot(neuralnet2, show.weights=F)
 estimateSupport2 = predict(neuralnet2, data_normalized, type="class")
 
 #predict() returns both Y/N output nodes, take the max
