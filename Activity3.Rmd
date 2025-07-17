@@ -117,11 +117,24 @@ str(data_normalized, give.attr=F)
 #help(str)
 
 ```
+
+
 ```{r}
 #handling flags
 ```
 
 
+```{r}
+# Z-score standardization
+data_standardized = data
+
+#standardization of numeric variables, for decision trees is not necessary
+data_standardized$Wins.s = (data$Wins - mean(data$Wins))/sd(data$Wins)
+data_standardized$Games.Played.s = (data$Games.Played - mean(data$Games.Played))/sd(data$Games.Played)
+data_standardized$Tetra.Rating.s = (data$Tetra.Rating - mean(data$Tetra.Rating))/sd(data$Tetra.Rating)
+
+
+```
 
 
 # Regession
@@ -132,15 +145,41 @@ str(data_normalized, give.attr=F)
 
 # KNN
 
+```{r}
+
+```
+
+
+
 <hr>
 
 # Decision Tree
 
+
+
+
 ```{r}
 
+
+data_without_support = data
+test_without_support = test
+train_without_support = train
+
+#drop support
+data_without_support$Supporter.Status. = NULL
+test_without_support$Supporter.Status. = NULL
+train_without_support$Supporter.Status. = NULL
+
+#drop username
+train_without_username = train
+train_without_username$Username = NULL
+
+
+
 set.seed(1)
-cartfittrain = rpart(income~., dat=train, method="class")
-rpart.plot(cartfit)
+cartfittrain = rpart(Supporter.Status.~., dat=train_without_username, method="class")
+#control=rpart.control(cp=0.0005)
+rpart.plot(cartfittrain)
 ```
 
 
