@@ -1,6 +1,6 @@
-<<<<<<< HEAD
 ---
-title: "Business Intelligence from Web Data Analytics and Data Mining using R and AI - Activity3"
+title: "Business Intelligence from Web Data Analytics and Data Mining using R and
+  AI - Activity3"
 author: "Jannik Guldmand, Sophia Klimova & Adam Dapoz"
 date: "`r Sys.Date()`"
 output:
@@ -13,6 +13,9 @@ output:
     highlight: tango
     df_print: paged
     code_folding: show
+  pdf_document:
+    toc: true
+    toc_depth: '2'
 ---
 
 ```{r setup, include=FALSE}
@@ -23,24 +26,18 @@ knitr::opts_chunk$set(echo = TRUE)
 * Try to Predict/Classify if a player is gonna support
 * Try to Predict a players Rank
 
-```{r install packages}
-install.packages("rpart.plot")
-```
-
 ```{r load packages}
 library(rpart.plot)
 ```
 
-
-
 # Data
-```{r}
+```{r load data}
 data = read.csv("tldata.csv")
 head(data)
 summary(data)
 str(data)
 ```
-```{r}
+```{r prparing the data}
 ## Preparing the data
 
 #make some things factors
@@ -70,23 +67,24 @@ data$X = NULL
 str(data)
 ```
 
+```{r random seed}
+set.seed(4)
+```
 
 
 ## splitting into test and train
-```{r}
+```{r defining data splits}
 num_of_splits = 10
 splits = sample( rep(1:num_of_splits, ceiling(nrow(data)/num_of_splits) ), nrow(data) )
-#splits
 ```
 
-```{r}
-
+```{r check for uniform-distribution}
 #check for uniform-distribution
 summary(as.factor(splits))
 str(splits)
 ```
 
-```{r}
+```{r splitting data}
 train = data[splits!=1,]
 test = data[splits==1,]
 
@@ -100,11 +98,8 @@ test = data[splits==1,]
 
 ```
 
-```{r}
-
+```{r normalizing data}
 data_normalized = data
-
-
 
 for(i in c(1,4,5,6,7,8,9,10,11,12)) {
   data_normalized[,i] = scale(
@@ -114,15 +109,10 @@ for(i in c(1,4,5,6,7,8,9,10,11,12)) {
 }
 
 str(data_normalized, give.attr=F)
-
-#help(str)
-
 ```
 
-
-```{r}
+```{r handling flags}
 #handling flags
-
 #turn rank factor into flags
 for (i in 1:length(levels(data_normalized$Rank))) {
   data_normalized[,ncol(data_normalized)+1] = 0 #make new column
@@ -143,9 +133,24 @@ data_normalized$flagDrank = NULL
 
 str(data_normalized, give.attr=F)
 ```
-
-
 ```{r}
+#train
+```
+
+```{r balancing data}
+#make training set with higher proportion of supporters (50/50 split)
+allsupporters = data[data_normalized$Supporter.Status. == 1,]
+allnonsupporters = data[data_normalized$Supporter.Status. == 0,]
+
+allsupporters
+allnonsupporters
+train_balanced = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), nrow(allsupporters)),] )
+#shuffle it
+train_balanced = train_balanced[sample(1:nrow(train), nrow(train)),]
+```
+
+```{r z-score standadizing data}
 # Z-score standardization
 data_standardized = data
 
@@ -154,7 +159,7 @@ data_standardized$Wins.s = (data$Wins - mean(data$Wins))/sd(data$Wins)
 data_standardized$Games.Played.s = (data$Games.Played - mean(data$Games.Played))/sd(data$Games.Played)
 data_standardized$Tetra.Rating.s = (data$Tetra.Rating - mean(data$Tetra.Rating))/sd(data$Tetra.Rating)
 
-
+data_standardized
 ```
 
 
@@ -166,9 +171,6 @@ data_standardized$Tetra.Rating.s = (data$Tetra.Rating - mean(data$Tetra.Rating))
 
 # KNN
 
-```{r}
-
-```
 
 
 
@@ -177,223 +179,81 @@ data_standardized$Tetra.Rating.s = (data$Tetra.Rating - mean(data$Tetra.Rating))
 # Decision Tree
 
 
-
-
 ```{r}
-
-
-data_without_support = data
-test_without_support = test
-train_without_support = train
+# Tree data
+#data_without_support = data
+#test_without_support = test
+#train_without_support = train
 
 #drop support
-data_without_support$Supporter.Status. = NULL
-test_without_support$Supporter.Status. = NULL
-train_without_support$Supporter.Status. = NULL
+#data_without_support$Supporter.Status. = NULL
+#test_without_support$Supporter.Status. = NULL
+#train_without_support$Supporter.Status. = NULL
 
-#drop username
+#Train: drop username, country
 train_without_username = train
 train_without_username$Username = NULL
+train_without_username$Country = NULL
 
+#Test: drop username, country
+test_without_username = test
+test_without_username$Username = NULL
+test_without_username$Country = NULL
 
+train_balanced_without_username = train_balanced
+train_balanced_without_username$Username = NULL
+train_balanced_without_username$Country = NULL
 
+#train_without_username$Standing = NULL
+```
+
+```{r}
+#train_without_username
+train_balanced_without_username
+```
+
+## CART
+
+### CART v1
+
+```{r}
 set.seed(1)
-cartfittrain = rpart(Supporter.Status.~., dat=train_without_username, method="class")
-#control=rpart.control(cp=0.0005)
-rpart.plot(cartfittrain)
-```
-
-
-<hr>
-# Neural Networks
-
-<hr>
-# Clustering
-
-=======
----
-title: "Business Intelligence from Web Data Analytics and Data Mining using R and AI - Activity3"
-author: "Jannik Guldmand, Sophia Klimova & Adam Dapoz"
-date: "`r Sys.Date()`"
-output:
-  html_document:
-    toc: true
-    toc_float: true
-    toc_depth: 2
-    number_sections: false
-    theme: flatly
-    highlight: tango
-    df_print: paged
-    code_folding: show
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-# Overview of Activity3
-* Try to Predict/Classify if a player is gonna support
-* Try to Predict a players Rank
-
-```{r install packages}
-#install.packages("rpart.plot")
-```
-
-```{r load packages}
-library(rpart.plot)
-```
-
-
-
-# Data
-```{r}
-data = read.csv("tldata.csv")
-head(data)
-summary(data)
-str(data)
-```
-```{r}
-## Preparing the data
-
-#make some things factors
-data$Country           = as.factor(data$Country)
-
-data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
-data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
-data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
-data$Country           = as.factor(data$Country)
-
-data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
-
-data$Active.This.Week = as.factor(data$Active.This.Week)
-data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
-
-data$Supporter.Status. = as.factor(data$Supporter.Status.)
-data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
-
-data$Wins = as.numeric(data$Wins)
-data$Games.Played = as.numeric(data$Games.Played)
-
-data$Username = as.character(data$Username)
-
-
-#remove index (standing does this)
-data$X = NULL
-str(data)
-```
-
-
-
-## splitting into test and train
-```{r}
-num_of_splits = 10
-splits = sample( rep(1:num_of_splits, ceiling(nrow(data)/num_of_splits) ), nrow(data) )
-#splits
-```
-
-```{r}
-
-#check for uniform-distribution
-summary(as.factor(splits))
-str(splits)
-```
-
-```{r}
-train = data[splits!=1,]
-test = data[splits==1,]
-
-#nrow(train) + nrow(test)
-#nrow(test)
-
-#dynamically
-#testdata(7)
-#=> train
-#=>test
-
-```
-
-```{r}
-
-data_normalized = data
-
-
-
-for(i in c(1,4,5,6,7,8,9,10,11,12)) {
-  data_normalized[,i] = scale(
-                              data_normalized[,i], 
-                              center=min(data_normalized[,i]), 
-                              scale=max(data_normalized[,i])-min(data_normalized[,i]))
-}
-
-str(data_normalized, give.attr=F)
-
-#help(str)
-
-```
-
-
-```{r}
-#handling flags
-```
-
-
-```{r}
-# Z-score standardization
-data_standardized = data
-
-#standardization of numeric variables, for decision trees is not necessary
-data_standardized$Wins.s = (data$Wins - mean(data$Wins))/sd(data$Wins)
-data_standardized$Games.Played.s = (data$Games.Played - mean(data$Games.Played))/sd(data$Games.Played)
-data_standardized$Tetra.Rating.s = (data$Tetra.Rating - mean(data$Tetra.Rating))/sd(data$Tetra.Rating)
-
-
-```
-
-
-# Regession
-## Linear Regression
-## Multiple Regression
-
-<hr>
-
-# KNN
-
-```{r}
-
-```
-
-
-
-<hr>
-
-# Decision Tree
-
-
-
-
-```{r}
-
-
-data_without_support = data
-test_without_support = test
-train_without_support = train
-
-#drop support
-data_without_support$Supporter.Status. = NULL
-test_without_support$Supporter.Status. = NULL
-train_without_support$Supporter.Status. = NULL
-
-#drop username
-train_without_username = train
-train_without_username$Username = NULL
-
-
-set.seed(1)
-cartfittrain = rpart(Supporter.Status.~., dat=train_without_username, method="class")
+#cartfittrain = rpart(Supporter.Status.~., dat=train_without_username, method="class", control=rpart.control(minsplit=4, cp=0.0015))
+cartfittrain = rpart(Supporter.Status.~., dat=train_balanced_without_username, method="class", control=rpart.control(minsplit=4, cp=0.003))
+#cartfittrain = rpart(Supporter.Status.~ Glicko.Rating+Country, dat=train_without_username, method="class")
+rpart.plot(cartfittrain, type=2)
 #control=rpart.control(cp=0.0005)
 #min-splits
-rpart.plot(cartfittrain)
+
 ```
+### CART v2
+
+```{r}
+train_without_username
+cartfittrain2 = rpart(Supporter.Status.~., dat=train_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+
+rpart.plot(cartfittrain2, type=2)
+```
+```{r}
+str(train_without_username)
+```
+
+### CART v3
+
+```{r}
+cartfittest2 = rpart(Supporter.Status.~., dat=test_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+
+rpart.plot(cartfittest2, type=2)
+```
+```{r}
+str(test_without_username)
+```
+### CART v4
+
+
+
+
+
 
 
 <hr>
@@ -402,4 +262,5 @@ rpart.plot(cartfittrain)
 <hr>
 # Clustering
 
->>>>>>> 7645e0cb44cfd9767d6919a02306984376a0bc8c
+
+
