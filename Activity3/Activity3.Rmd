@@ -22,13 +22,21 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Overview of Activity3
+```{r load packages}
+library(rpart.plot)
+library(factoextra)
+library(ggplot2)
+```
+
+# Activity3
+
+## Introduction 
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam nec orci vitae ligula pretium sollicitudin. Sed sed efficitur nulla. Morbi sed mollis odio, at interdum est. In at imperdiet metus, ac placerat elit. Maecenas dictum sit amet arcu in cursus. Integer dictum elementum dui, id interdum sem consequat in. Nullam sapien ligula, elementum id nisi at, convallis sollicitudin elit. Sed luctus pulvinar lobortis. Quisque a diam in arcu vulputate scelerisque. Aliquam lobortis aliquet dui, varius imperdiet libero interdum non.
+
+## Requirements & Goals
 * Try to Predict/Classify if a player is gonna support
 * Try to Predict a players Rank
 
-```{r load packages}
-library(rpart.plot)
-```
 
 # Data
 ```{r load data}
@@ -174,14 +182,14 @@ data_standardized
 
 <hr>
 
-# KNN
+# KNN (Sophie)
 
 
 
 
 <hr>
 
-# Decision Tree
+# Decision Trees (Jannik)
 
 
 ```{r}
@@ -217,10 +225,7 @@ train_balanced_without_username$Country = NULL
 train_balanced_without_username
 ```
 
-## CART
-
-### CART v1
-
+## CART v1
 ```{r}
 set.seed(1)
 #cartfittrain = rpart(Supporter.Status.~., dat=train_without_username, method="class", control=rpart.control(minsplit=4, cp=0.0015))
@@ -231,8 +236,8 @@ rpart.plot(cartfittrain, type=2)
 #min-splits
 
 ```
-### CART v2
 
+## CART v2
 ```{r}
 train_without_username
 cartfittrain2 = rpart(Supporter.Status.~., dat=train_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
@@ -243,8 +248,7 @@ rpart.plot(cartfittrain2, type=2)
 str(train_without_username)
 ```
 
-### CART v3
-
+## CART v3
 ```{r}
 cartfittest2 = rpart(Supporter.Status.~., dat=test_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
 
@@ -253,7 +257,8 @@ rpart.plot(cartfittest2, type=2)
 ```{r}
 str(test_without_username)
 ```
-### CART v4
+
+## CART v4
 
 
 
@@ -262,10 +267,173 @@ str(test_without_username)
 
 
 <hr>
-# Neural Networks
+# Neural Networks (Adam)
+
+
+
+
+
+
 
 <hr>
-# Clustering
+# Clustering (Jannik)
 
 
+## preparing data for clustering
+```{r}
+data2 = read.csv("tldata.csv")
+cluster_data = data2
+
+#drop unnecessary columns
+cluster_data$X = NULL
+cluster_data$Username = NULL
+cluster_data$Country = NULL
+cluster_data$RankColour = NULL
+
+#converting charecter to factors
+cluster_data$Rank = as.factor(cluster_data$Rank)
+cluster_data$Active.This.Week = as.factor(cluster_data$Active.This.Week)
+cluster_data$Supporter.Status. = as.factor(cluster_data$Supporter.Status.)
+
+# generate dummy-variabler using model.matrix
+dummy_vars <- model.matrix(~ Rank + Active.This.Week + Supporter.Status. - 1, data = cluster_data)
+
+# combine de numeriske data and dummy variables
+numeric_data <- cluster_data[sapply(cluster_data, is.numeric)]
+numeric_cluster_data <- cbind(numeric_data, dummy_vars)
+
+str(numeric_cluster_data)
+```
+```{r}
+numeric_cluster_data
+```
+```{r}
+head(dummy_vars[, grepl("Rank", colnames(dummy_vars))])
+```
+## controling of dummyvariables was done correctly
+
+```{r}
+
+which(numeric_cluster_data$`RankA` == 1)
+which(numeric_cluster_data$`RankA-` == 1)
+which(numeric_cluster_data$`RankA+` == 1)
+#which(numeric_cluster_data$`RankB+` == 1)
+#which(numeric_cluster_data$`RankB-` == 1)
+#which(numeric_cluster_data$`RankB+` == 1)
+#which(numeric_cluster_data$`RankC` == 1)
+#which(numeric_cluster_data$`RankC+` == 1)
+#which(numeric_cluster_data$`RankC-` == 1)
+```
+
+
+```{r}
+# Standardiser (skalering)
+cluster_data_scaled <- scale(numeric_cluster_data)
+
+# Find klynger med K-means (10 clusters)
+kmeans_result10 <- kmeans(cluster_data_scaled, centers = 10)
+
+# found clusters
+kmeans_result10$cluster
+```
+```{r}
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result10$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering på shoppers datasæt")
+```
+## Elbow Plot
+```{r}
+# Elbow methode using fviz_nbclust to plot total  within-cluster sum of squares (WSS)
+fviz_nbclust(cluster_data_scaled, kmeans, method = "wss") + labs(subtitle = "Elbow method")
+```
+```{r}
+library(parallel)
+
+# Use all available cores
+num_cores <- detectCores() - 1
+
+# Sample data
+sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 3000), ]
+
+# Custom WSS function using parallel
+wss_parallel <- mclapply(1:10, function(k) {
+  kmeans(sampled_data, centers = k, nstart = 10)$tot.withinss
+}, mc.cores = num_cores)
+
+# Plot elbow manually
+plot(1:10, unlist(wss_parallel), type = "b",
+     xlab = "Number of Clusters K",
+     ylab = "Total Within-Cluster Sum of Squares",
+     main = "Elbow Method (Parallel)")
+
+```
+```{r}
+library(parallel)
+
+# Use all available cores
+num_cores <- detectCores() - 1
+
+# Use full dataset (no sampling)
+full_data <- cluster_data_scaled
+
+# Custom WSS function using parallel
+wss_parallel <- mclapply(1:10, function(k) {
+  kmeans(full_data, centers = k, nstart = 10)$tot.withinss
+}, mc.cores = num_cores)
+
+# Plot elbow manually
+plot(1:10, unlist(wss_parallel), type = "b",
+     xlab = "Number of Clusters K",
+     ylab = "Total Within-Cluster Sum of Squares",
+     main = "Elbow Method (Full Dataset, Parallel)")
+```
+```{r}
+# Find klynger med K-means (4 clusters)
+kmeans_result4 <- kmeans(cluster_data_scaled, centers = 4)
+```
+
+```{r}
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result4$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering på shoppers datasæt")
+```
+## 3D Plotting the 4 Clusters
+
+```{r}
+library(plotly)
+
+# PCA på de skalerede data
+pca <- prcomp(cluster_data_scaled)
+
+# Lav et data frame med de første tre komponenter + klynge labels
+pca_data <- data.frame(PC1 = pca$x[, 1],
+                       PC2 = pca$x[, 2],
+                       PC3 = pca$x[, 3],
+                       Cluster = factor(kmeans_result4$cluster))  # 4 clusters
+
+# 3D plot med plotly
+plot_ly(pca_data, 
+        x = ~PC1, y = ~PC2, z = ~PC3, 
+        color = ~Cluster, 
+        colors = c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"),  # fire farver
+        type = "scatter3d", 
+        mode = "markers") %>%
+  layout(title = "3D K-means clustering med 4 klynger (PCA)")
+
+```
+
+
+```{r}
+summary(pca)
+```
+
+```{r}
+pca$rotation
+```
 
