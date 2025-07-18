@@ -1,4 +1,4 @@
-# Business-Intelligence-from-Web-Data-Analytics-and-Data-Mining-using-R-and-AI
+# Business Intelligence from Web Data Analytics and Data Mining using R and AI
 
 ## AU Summer University 2025
 
