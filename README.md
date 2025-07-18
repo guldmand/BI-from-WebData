@@ -1,7 +1,8 @@
 # Business-Intelligence-from-Web-Data-Analytics-and-Data-Mining-using-R-and-AI
 
-AU Summer University 2025
-02.07.2025 -  18.07.2025
+## AU Summer University 2025
+
+02.07.2025 -  18.07.2025 <br>
 <a href="https://international.au.dk/education/admissions/summeruniversity/course/courses-2025/business-intelligence-from-web-data-analytics-and-data-mining-using-r-and-ai">Course website</a>
 
 ## Activity2
