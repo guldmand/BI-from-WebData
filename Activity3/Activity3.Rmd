@@ -261,6 +261,12 @@ str(test_without_username)
 ## CART v4
 
 
+## C4.5
+
+
+## C4.5
+
+
 
 
 
@@ -313,10 +319,9 @@ head(dummy_vars[, grepl("Rank", colnames(dummy_vars))])
 ## controling of dummyvariables was done correctly
 
 ```{r}
-
-which(numeric_cluster_data$`RankA` == 1)
-which(numeric_cluster_data$`RankA-` == 1)
-which(numeric_cluster_data$`RankA+` == 1)
+#which(numeric_cluster_data$`RankA` == 1)
+#which(numeric_cluster_data$`RankA-` == 1)
+#which(numeric_cluster_data$`RankA+` == 1)
 #which(numeric_cluster_data$`RankB+` == 1)
 #which(numeric_cluster_data$`RankB-` == 1)
 #which(numeric_cluster_data$`RankB+` == 1)
@@ -346,8 +351,10 @@ ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
 ```
 ## Elbow Plot
 ```{r}
+# Code was running slow and the ammount of data points made R-studio Crash
+
 # Elbow methode using fviz_nbclust to plot total  within-cluster sum of squares (WSS)
-fviz_nbclust(cluster_data_scaled, kmeans, method = "wss") + labs(subtitle = "Elbow method")
+#fviz_nbclust(cluster_data_scaled, kmeans, method = "wss") + labs(subtitle = "Elbow method")
 ```
 ```{r}
 library(parallel)
@@ -435,5 +442,50 @@ summary(pca)
 
 ```{r}
 pca$rotation
+```
+
+
+Keept: 
+
+
+Dropped:
+
+standing, wins, pps, vs, tetra rating
+
+username
+country
+rankcolour
+
+
+```{r}
+#silhuette score
+
+# Code was running slow and the ammount of data points made R-studio Crash
+#fviz_nbclust(cluster_data_scaled, kmeans, method = "silhouette") +
+#labs(subtitle = "Silhouette method")
+```
+
+```{r}
+library(cluster)
+library(parallel)
+
+# Use all available cores
+num_cores <- detectCores() - 1
+
+# Use full scaled dataset
+full_data <- cluster_data_scaled
+
+# Parallel silhouette score computation
+silhouette_scores <- mclapply(2:10, function(k) {
+  km_res <- kmeans(full_data, centers = k, nstart = 10)
+  ss <- silhouette(km_res$cluster, dist(full_data))
+  mean(ss[, 3])  # 3rd column = silhouette width
+}, mc.cores = num_cores)
+
+# Plot results
+plot(2:10, unlist(silhouette_scores), type = "b",
+     xlab = "Number of Clusters K",
+     ylab = "Average Silhouette Width",
+     main = "Silhouette Method (Full Dataset, Parallel)")
 ```
 
