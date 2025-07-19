@@ -46,6 +46,9 @@ head(data)
 summary(data)
 str(data)
 ```
+
+
+
 ```{r prparing the data}
 ## Preparing the data
 
@@ -74,6 +77,10 @@ data$Username = as.character(data$Username)
 #remove index (standing does this)
 data$X = NULL
 str(data)
+
+
+
+
 ```
 
 ```{r random seed}
@@ -272,13 +279,371 @@ str(test_without_username)
 
 
 
-
-
 <hr>
+# Clustering (Jannik)
+
+
+## preparing data for clustering
+```{r}
+data2 = read.csv("tldata.csv")
+cluster_data = data2
+
+#drop unnecessary columns
+cluster_data$X = NULL
+cluster_data$Username = NULL
+cluster_data$Country = NULL
+cluster_data$RankColour = NULL
+
+# Removing highly correlated variables
+cluster_data$Standing  = NULL
+cluster_data$Wins  = NULL
+cluster_data$PPS  = NULL
+cluster_data$Tetra.Rating  = NULL
+cluster_data$VS  = NULL
+
+#converting charecter to factors
+cluster_data$Rank = as.factor(cluster_data$Rank)
+cluster_data$Active.This.Week = as.factor(cluster_data$Active.This.Week)
+cluster_data$Supporter.Status. = as.factor(cluster_data$Supporter.Status.)
+
+# generate dummy-variabler using model.matrix
+dummy_vars <- model.matrix(~ Rank + Active.This.Week + Supporter.Status. - 1, data = cluster_data)
+
+# combine de numeriske data and dummy variables
+numeric_data <- cluster_data[sapply(cluster_data, is.numeric)]
+numeric_cluster_data <- cbind(numeric_data, dummy_vars)
+
+str(numeric_cluster_data)
+```
+#
+
+```{r}
+
+```
+
+
+
+
+```{r}
+numeric_cluster_data
+```
+```{r}
+head(dummy_vars[, grepl("Rank", colnames(dummy_vars))])
+```
+## controling of dummyvariables was done correctly
+
+```{r}
+#which(numeric_cluster_data$`RankA` == 1)
+#which(numeric_cluster_data$`RankA-` == 1)
+#which(numeric_cluster_data$`RankA+` == 1)
+#which(numeric_cluster_data$`RankB+` == 1)
+#which(numeric_cluster_data$`RankB-` == 1)
+#which(numeric_cluster_data$`RankB+` == 1)
+#which(numeric_cluster_data$`RankC` == 1)
+#which(numeric_cluster_data$`RankC+` == 1)
+#which(numeric_cluster_data$`RankC-` == 1)
+```
+
+
+```{r}
+# Standardiser (skalering)
+cluster_data_scaled <- scale(numeric_cluster_data)
+
+# Find klynger med K-means (10 clusters)
+kmeans_result10 <- kmeans(cluster_data_scaled, centers = 10)
+
+# found clusters
+kmeans_result10$cluster
+```
+```{r}
+library(ggplot2)
+
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result10$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering with 10 clusters (with highly correlated variables removed)")
+```
+## Elbow Plot
+```{r}
+# Code was running slow and the ammount of data points made R-studio Crash
+
+# Elbow methode using fviz_nbclust to plot total  within-cluster sum of squares (WSS)
+#fviz_nbclust(cluster_data_scaled, kmeans, method = "wss") + labs(subtitle = "Elbow method")
+```
+```{r}
+library(parallel)
+
+# Use all available cores
+num_cores <- detectCores() - 1
+
+# Sample data
+sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 3000), ]
+
+# Custom WSS function using parallel
+wss_parallel <- mclapply(1:10, function(k) {
+  kmeans(sampled_data, centers = k, nstart = 10)$tot.withinss
+}, mc.cores = num_cores)
+
+# Plot elbow manually
+plot(1:10, unlist(wss_parallel), type = "b",
+     xlab = "Number of Clusters K",
+     ylab = "Total Within-Cluster Sum of Squares",
+     main = "Elbow Method (Parallel)")
+
+```
+
+```{r}
+# Find klynger med K-means (4 clusters)
+kmeans_result4 <- kmeans(cluster_data_scaled, centers = 4)
+```
+
+```{r}
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result4$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering with 4 clusters  (with highly correlated variables removed)")
+```
+## 3D Plotting the 4 Clusters
+
+```{r}
+library(plotly)
+
+# PCA på de skalerede data
+pca <- prcomp(cluster_data_scaled)
+
+# Lav et data frame med de første tre komponenter + klynge labels
+pca_data <- data.frame(PC1 = pca$x[, 1],
+                       PC2 = pca$x[, 2],
+                       PC3 = pca$x[, 3],
+                       Cluster = factor(kmeans_result4$cluster))  # 4 clusters
+
+# 3D plot med plotly
+plot_ly(pca_data, 
+        x = ~PC1, y = ~PC2, z = ~PC3, 
+        color = ~Cluster, 
+        colors = c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"),  # fire farver
+        type = "scatter3d", 
+        mode = "markers") %>%
+  layout(title = "3D K-means 4 Clusters ( 3 PCA without -h.correlated vars)")
+
+```
+
+
+```{r}
+summary(pca)
+```
+
+```{r}
+pca$rotation
+```
+
+
+
+
+
+```{r}
+#silhuette score
+
+# Code was running slow and the ammount of data points made R-studio Crash
+#fviz_nbclust(cluster_data_scaled, kmeans, method = "silhouette") +
+#labs(subtitle = "Silhouette method")
+```
+
+```{r}
+library(cluster)
+library(parallel)
+
+# Use all available cores
+num_cores <- detectCores() - 1
+
+# Use full scaled dataset
+full_data <- cluster_data_scaled
+
+# Parallel silhouette score computation
+silhouette_scores <- mclapply(2:10, function(k) {
+  km_res <- kmeans(full_data, centers = k, nstart = 10)
+  ss <- silhouette(km_res$cluster, dist(full_data))
+  mean(ss[, 3])  # 3rd column = silhouette width
+}, mc.cores = num_cores)
+
+# Plot results
+plot(2:10, unlist(silhouette_scores), type = "b",
+     xlab = "Number of Clusters K",
+     ylab = "Average Silhouette Width",
+     main = "Silhouette Method (Full Dataset, Parallel)")
+```
+
+```{r}
+library(cluster)
+library(parallel)
+
+# Brug 3000 tilfældige rækker
+set.seed(123)
+sample_idx <- sample(1:nrow(cluster_data_scaled), size = 3000)
+sampled_data <- cluster_data_scaled[sample_idx, ]
+
+# Brug alle tilgængelige kerner minus 1
+num_cores <- detectCores() - 1
+
+# Parallel beregning af silhouette score
+silhouette_scores <- mclapply(2:10, function(k) {
+  km <- kmeans(sampled_data, centers = k, nstart = 10)
+  sil <- silhouette(km$cluster, dist(sampled_data))
+  mean(sil[, 3])  # gennemsnitlig silhouette-bredde
+}, mc.cores = num_cores)
+
+# Plot
+plot(2:10, unlist(silhouette_scores), type = "b",
+     xlab = "Antal klynger (k)",
+     ylab = "Gennemsnitlig Silhouette-bredde",
+     main = "Silhouette metode (sampled + parallel)")
+```
+
+
+# Silhuette score working on both mac and windows, but uses sample
+```{r}
+library(cluster)
+library(future.apply)
+
+plan(multisession)
+
+# Sample
+sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 20000), ]
+
+# Beregn silhouette scores
+k_values <- 2:20
+silhouette_scores <- future_lapply(k_values, function(k) {
+  km <- kmeans(sampled_data, centers = k, nstart = 10)
+  sil <- silhouette(km$cluster, dist(sampled_data))
+  mean(sil[, 3])
+})
+
+scores <- unlist(silhouette_scores)
+
+# Find optimal k og score
+best_index <- which.max(scores)
+best_k <- k_values[best_index]
+best_score <- scores[best_index]
+
+# Plot
+plot(k_values, scores, type = "b",
+     xlab = "k", ylab = "Avg. Silhouette Width",
+     main = "Silhouette (Future Parallel, Sampled)",
+     xaxt = "n",
+     ylim = c(min(scores), best_score + 0.05))
+
+grid()
+axis(side = 1, at = k_values)
+
+# Rød prik og label lidt under
+points(best_k, best_score, col = "red", pch = 19)
+text(best_k, best_score - 0.02, 
+     labels = paste("Best k =", best_k), col = "red")
+
+```
+
+
+
+
+
+
+
+# Silhuette score working on both mac and windows, but uses sample
+```{r}
+library(cluster)
+library(future.apply)
+
+# Brug hele datasættet
+full_data <- cluster_data_scaled
+
+# Planlæg multisession backend
+plan(multisession)  # virker på både Windows og macOS
+
+# Parallel silhouette beregning (k = 2:10)
+silhouette_scores <- future_lapply(2:10, function(k) {
+  km <- kmeans(full_data, centers = k, nstart = 10)
+  
+  # OBS: dist() kan kræve meget RAM!
+  dists <- dist(full_data)
+  sil <- silhouette(km$cluster, dists)
+  mean(sil[, 3])
+})
+
+# Plot
+plot(2:10, unlist(silhouette_scores), type = "b",
+     xlab = "Antal klynger (k)",
+     ylab = "Gns. silhouette-score",
+     main = "Silhouette-metode (Hele datasættet, parallel)")
+```
+
+### 18 Clusters
+
+```{r}
+# Find klynger med K-means (4 clusters)
+kmeans_result18 <- kmeans(cluster_data_scaled, centers = 18)
+```
+
+
+```{r}
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result18$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering with 18 clusters  (-highly correlated vars)")
+```
+```{r}
+unique(data$RankColour)
+```
+
+
+```{r}
+library(plotly)
+
+# PCA på de skalerede data
+pca <- prcomp(cluster_data_scaled)
+
+# Lav et data frame med de første tre komponenter + klynge labels
+pca_data <- data.frame(PC1 = pca$x[, 1],
+                       PC2 = pca$x[, 2],
+                       PC3 = pca$x[, 3],
+                       Cluster = factor(kmeans_result18$cluster))  # 4 clusters
+
+# 3D plot med plotly
+plot_ly(pca_data, 
+        x = ~PC1, y = ~PC2, z = ~PC3, 
+        color = ~Cluster, 
+        #colors = c("#A763EA","#FF45FF","#FF3813","#DB8B1F","#D8AF0E","#E0A71B","#B2972B", "#1FA834", "#46AD51", "#3BB687", "#4F99C0", "#4F64C9", "#5650C7", "#552883", "#733E8F", "#79558C", "#6C496E", "#907591"),  # fire farver
+        #colors = data$RankColour,
+        type = "scatter3d", 
+        mode = "markers") %>%
+  layout(title = "3D K-means 4 Clusters ( 18 PCA without -h.correlated vars)")
+
+```
+
+
+```{r}
+summary(pca)
+```
+
+
+```{r}
+pca$rotation
+```
+
+
+
 # Neural Networks (Adam)
 
 ```{r}
 #-------------------- Neural Net --------------------
+
+library(neuralnet)
+
 #min max normalization
 data_normalized = data
 
@@ -388,286 +753,118 @@ print(proportions(estimateSupportTable2)[1] + proportions(estimateSupportTable2)
 
 
 
-
-
-<hr>
-# Clustering (Jannik)
-
-
-## preparing data for clustering
-```{r}
-data2 = read.csv("tldata.csv")
-cluster_data = data2
-
-#drop unnecessary columns
-cluster_data$X = NULL
-cluster_data$Username = NULL
-cluster_data$Country = NULL
-cluster_data$RankColour = NULL
-
-#converting charecter to factors
-cluster_data$Rank = as.factor(cluster_data$Rank)
-cluster_data$Active.This.Week = as.factor(cluster_data$Active.This.Week)
-cluster_data$Supporter.Status. = as.factor(cluster_data$Supporter.Status.)
-
-# generate dummy-variabler using model.matrix
-dummy_vars <- model.matrix(~ Rank + Active.This.Week + Supporter.Status. - 1, data = cluster_data)
-
-# combine de numeriske data and dummy variables
-numeric_data <- cluster_data[sapply(cluster_data, is.numeric)]
-numeric_cluster_data <- cbind(numeric_data, dummy_vars)
-
-str(numeric_cluster_data)
-```
-```{r}
-numeric_cluster_data
-```
-```{r}
-head(dummy_vars[, grepl("Rank", colnames(dummy_vars))])
-```
-## controling of dummyvariables was done correctly
-
-```{r}
-#which(numeric_cluster_data$`RankA` == 1)
-#which(numeric_cluster_data$`RankA-` == 1)
-#which(numeric_cluster_data$`RankA+` == 1)
-#which(numeric_cluster_data$`RankB+` == 1)
-#which(numeric_cluster_data$`RankB-` == 1)
-#which(numeric_cluster_data$`RankB+` == 1)
-#which(numeric_cluster_data$`RankC` == 1)
-#which(numeric_cluster_data$`RankC+` == 1)
-#which(numeric_cluster_data$`RankC-` == 1)
-```
-
-
-```{r}
-# Standardiser (skalering)
-cluster_data_scaled <- scale(numeric_cluster_data)
-
-# Find klynger med K-means (10 clusters)
-kmeans_result10 <- kmeans(cluster_data_scaled, centers = 10)
-
-# found clusters
-kmeans_result10$cluster
-```
-```{r}
-library(ggplot2)
-
-# Plot using PCA
-pca <- prcomp(cluster_data_scaled)
-pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result10$cluster))
-ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
-  geom_point() +
-  ggtitle("K-means clustering på shoppers datasæt")
-```
-## Elbow Plot
-```{r}
-# Code was running slow and the ammount of data points made R-studio Crash
-
-# Elbow methode using fviz_nbclust to plot total  within-cluster sum of squares (WSS)
-#fviz_nbclust(cluster_data_scaled, kmeans, method = "wss") + labs(subtitle = "Elbow method")
-```
-```{r}
-library(parallel)
-
-# Use all available cores
-num_cores <- detectCores() - 1
-
-# Sample data
-sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 3000), ]
-
-# Custom WSS function using parallel
-wss_parallel <- mclapply(1:10, function(k) {
-  kmeans(sampled_data, centers = k, nstart = 10)$tot.withinss
-}, mc.cores = num_cores)
-
-# Plot elbow manually
-plot(1:10, unlist(wss_parallel), type = "b",
-     xlab = "Number of Clusters K",
-     ylab = "Total Within-Cluster Sum of Squares",
-     main = "Elbow Method (Parallel)")
-
-```
-
-```{r}
-# Find klynger med K-means (4 clusters)
-kmeans_result4 <- kmeans(cluster_data_scaled, centers = 4)
-```
-
-```{r}
-# Plot using PCA
-pca <- prcomp(cluster_data_scaled)
-pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result4$cluster))
-ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
-  geom_point() +
-  ggtitle("K-means clustering på shoppers datasæt")
-```
-## 3D Plotting the 4 Clusters
-
-```{r}
-library(plotly)
-
-# PCA på de skalerede data
-pca <- prcomp(cluster_data_scaled)
-
-# Lav et data frame med de første tre komponenter + klynge labels
-pca_data <- data.frame(PC1 = pca$x[, 1],
-                       PC2 = pca$x[, 2],
-                       PC3 = pca$x[, 3],
-                       Cluster = factor(kmeans_result4$cluster))  # 4 clusters
-
-# 3D plot med plotly
-plot_ly(pca_data, 
-        x = ~PC1, y = ~PC2, z = ~PC3, 
-        color = ~Cluster, 
-        colors = c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"),  # fire farver
-        type = "scatter3d", 
-        mode = "markers") %>%
-  layout(title = "3D K-means clustering med 4 klynger (PCA)")
-
-```
-
-
-```{r}
-summary(pca)
-```
-
-```{r}
-pca$rotation
-```
-
-
-Keept: 
-
-
-Dropped:
-
-standing, wins, pps, vs, tetra rating
-
-username
-country
-rankcolour
-
-
-```{r}
-#silhuette score
-
-# Code was running slow and the ammount of data points made R-studio Crash
-#fviz_nbclust(cluster_data_scaled, kmeans, method = "silhouette") +
-#labs(subtitle = "Silhouette method")
-```
-
-```{r}
-library(cluster)
-library(parallel)
-
-# Use all available cores
-num_cores <- detectCores() - 1
-
-# Use full scaled dataset
-full_data <- cluster_data_scaled
-
-# Parallel silhouette score computation
-silhouette_scores <- mclapply(2:10, function(k) {
-  km_res <- kmeans(full_data, centers = k, nstart = 10)
-  ss <- silhouette(km_res$cluster, dist(full_data))
-  mean(ss[, 3])  # 3rd column = silhouette width
-}, mc.cores = num_cores)
-
-# Plot results
-plot(2:10, unlist(silhouette_scores), type = "b",
-     xlab = "Number of Clusters K",
-     ylab = "Average Silhouette Width",
-     main = "Silhouette Method (Full Dataset, Parallel)")
-```
-
-```{r}
-library(cluster)
-library(parallel)
-
-# Brug 3000 tilfældige rækker
-set.seed(123)
-sample_idx <- sample(1:nrow(cluster_data_scaled), size = 3000)
-sampled_data <- cluster_data_scaled[sample_idx, ]
-
-# Brug alle tilgængelige kerner minus 1
-num_cores <- detectCores() - 1
-
-# Parallel beregning af silhouette score
-silhouette_scores <- mclapply(2:10, function(k) {
-  km <- kmeans(sampled_data, centers = k, nstart = 10)
-  sil <- silhouette(km$cluster, dist(sampled_data))
-  mean(sil[, 3])  # gennemsnitlig silhouette-bredde
-}, mc.cores = num_cores)
-
-# Plot
-plot(2:10, unlist(silhouette_scores), type = "b",
-     xlab = "Antal klynger (k)",
-     ylab = "Gennemsnitlig Silhouette-bredde",
-     main = "Silhouette metode (sampled + parallel)")
-```
-
-
-# Silhuette score working on both mac and windows, but uses sample
-```{r}
-library(cluster)
-library(future.apply)
-
-# Planlæg multi-core backend
-plan(multisession)  # virker på både Windows og Mac
-
-# Sample
-sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 3000), ]
-
-# Parallel silhouette
-silhouette_scores <- future_lapply(2:10, function(k) {
-  km <- kmeans(sampled_data, centers = k, nstart = 10)
-  sil <- silhouette(km$cluster, dist(sampled_data))
-  mean(sil[, 3])
-})
-
-# Plot
-plot(2:10, unlist(silhouette_scores), type = "b",
-     xlab = "k", ylab = "Avg. Silhouette Width",
-     main = "Silhouette (Future Parallel, Sampled)")
-
-```
-
-
-
-
-
-
-# Silhuette score working on both mac and windows, but uses sample
-```{r}
-library(cluster)
-library(future.apply)
-
-# Brug hele datasættet
-full_data <- cluster_data_scaled
-
-# Planlæg multisession backend
-plan(multisession)  # virker på både Windows og macOS
-
-# Parallel silhouette beregning (k = 2:10)
-silhouette_scores <- future_lapply(2:10, function(k) {
-  km <- kmeans(full_data, centers = k, nstart = 10)
-  
-  # OBS: dist() kan kræve meget RAM!
-  dists <- dist(full_data)
-  sil <- silhouette(km$cluster, dists)
-  mean(sil[, 3])
-})
-
-# Plot
-plot(2:10, unlist(silhouette_scores), type = "b",
-     xlab = "Antal klynger (k)",
-     ylab = "Gns. silhouette-score",
-     main = "Silhouette-metode (Hele datasættet, parallel)")
-```
-
 # KNN (Sophie)
 
 ```{r}
-# sophies code will come here
+data = read.csv(file="tldata.csv", header=TRUE)
+
+data$Country           = as.factor(data$Country)
+
+data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
+data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
+data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
+data$Country           = as.factor(data$Country)
+
+data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
+
+data$Active.This.Week = as.factor(data$Active.This.Week)
+data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
+
+data$Supporter.Status. = as.factor(data$Supporter.Status.)
+data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
+
+data$Wins = as.numeric(data$Wins)
+data$Games.Played = as.numeric(data$Games.Played)
+
+data$Username = as.character(data$Username)
+
+
+#remove index (standing does this)
+data$X = NULL
+str(data)
+
+data_normalized = data
+# min-max normalization
+for(i in c(1,4,5,6,7,8,9,10,11,12)) {
+  data_normalized[,i] = scale(
+    data_normalized[,i], 
+    center=min(data_normalized[,i]), 
+    scale=max(data_normalized[,i])-min(data_normalized[,i]))
+}
+
+str(data_normalized, give.attr=F)
+
+set.seed(1)
+num_of_splits = 10
+splits = sample( rep(1:num_of_splits, ceiling(nrow(data_normalized)/num_of_splits) ), nrow(data_normalized) )
+
+#check for uniform-distribution
+summary(as.factor(splits))
+str(splits)
+train = data_normalized[splits!=1,]
+test = data_normalized[splits==1,]
+
+install.packages("class")
+library(class)
+
+possible_ks = seq(1,20, by=1)
+accuracy = numeric(length(possible_ks))
+split_acc = numeric(10)
+
+for (ks in possible_ks) { 
+  j = possible_ks[ks]
+  for (i in 1:10) {
+    # create 10 training and test sets for 10-fold cross validation
+    train_i = data_normalized[splits != i,]
+    test_i  = data_normalized[splits == i,]
+    
+    # columns with normalized predictors and target variable
+    predictors_train_i = train_i[, c(5,6,7,11,12,14)]
+    
+    predictors_test_i = test_i[, c(5,6,7,11,12,14)]
+
+    target_train_i = train_i[, 15]
+    target_test_i = test_i[, 15]
+    
+    est_i = knn(train = predictors_train_i, test = predictors_test_i, 
+                cl = target_train_i, k = j)
+    split_acc[i] = mean(est_i == target_test_i)
+  }
+  accuracy[j] = mean(split_acc)
+}
+
+# optimal k
+ind = which.max(accuracy)
+best_k = possible_ks[ind]
+best_acc = accuracy[ind]
+
+best_k
+accuracy
+
+
+predictors = c(5,6,7,11,12,14)
+
+esttrain = knn(train = train[, predictors], test = train[, predictors], 
+          cl = train[, 15], k = best_k)
+table(esttrain, train[,15])
+accuracy_esttrain = (34793+19)/(34793+19+11+969)
+accuracy_esttrain
+
+est = knn(train = train[, predictors], test = test[, predictors], 
+          cl = train[, 15], k = best_k)
+table(est, test[,15])
+accuracy_est = (3881)/(3881+2+94)
+accuracy_est
+
+esttest = knn(train = test[, predictors], test = test[, predictors], 
+          cl = test[, 15], k = best_k)
+table(esttest, test[,15])
+accuracy_esttest = (3883)/(94+3883)
+
+#how they categorize with Supporter.Status.
+plot(data_normalized[, predictors], col=data_normalized$Supporter.Status.)
+
+# how they categorize with knn.cv
+es = knn.cv(train = data_normalized[, predictors], cl=data_normalized[, 15], k = best_k)
+plot(data_normalized[, predictors], col=es)
 ```
