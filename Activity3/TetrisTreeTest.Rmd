@@ -1,0 +1,352 @@
+---
+title: "TestrisDecisionTree"
+author: "Jannik Guldmand"
+date: "2025-07-18"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+
+## Tetris Decision Tree Test
+
+
+```{r load the tetris data}
+data = read.csv("tldata.csv")
+```
+
+
+## Prepare the data (Activity 2)
+```{r}
+## Preparing the data
+
+#make some things factors
+data$Country           = as.factor(data$Country)
+
+data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
+data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
+data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
+data$Country           = as.factor(data$Country)
+
+data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
+
+data$Active.This.Week = as.factor(data$Active.This.Week)
+data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
+
+data$Supporter.Status. = as.factor(data$Supporter.Status.)
+data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
+
+data$Wins = as.numeric(data$Wins)
+data$Games.Played = as.numeric(data$Games.Played)
+
+data$Username = as.character(data$Username)
+
+
+#remove index (standing does this)
+data$X = NULL
+str(data)
+```
+
+## splitting into test and train
+```{r}
+set.seed(4)
+num_of_splits = 10
+splits = sample( rep(1:num_of_splits, ceiling(nrow(data)/num_of_splits) ), nrow(data) )
+#splits
+```
+
+## put data into test and train
+```{r}
+train = data[splits!=1,]
+test = data[splits==1,]
+```
+
+```{r}
+nrow(test)
+nrow(train)
+```
+
+
+
+## Custom prepare data for decisiontree
+```{r}
+#Train: drop username, country
+train_without_username = train
+train_without_username$Username = NULL
+train_without_username$Country = NULL
+train_without_username$RankColour = NULL
+
+#Test: drop username, country
+test_without_username = test
+test_without_username$Username = NULL
+test_without_username$Country = NULL
+test_without_username$RankColour = NULL
+```
+
+```{r}
+nrow(test_without_username)
+nrow(train_without_username)
+```
+
+
+
+```{r}
+train_without_username
+```
+```{r}
+test_without_username
+```
+
+
+## CART Tetris Decision Tree (TRAIN)
+Not using entroy but maximizing split difference 
+
+```{r}
+cartfittrain = rpart(Supporter.Status.~., dat=train_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+rpart.plot(cartfittrain, type=2)
+```
+
+
+
+```{r}
+test_result = predict(cartfittrain, newdata=test_without_username, type="class")
+test_result
+```
+
+```{r}
+table(test_without_username$Supporter.Status., test_result)
+```
+### Lets try to balance the data
+
+```{r}
+#make training set with higher proportion of supporters (50/50 split)
+allsupporters = data[data$Supporter.Status. == 1,]
+allnonsupporters = data[data$Supporter.Status. == 0,]
+
+allsupporters
+allnonsupporters
+
+# balanced 1 ---------------------------------------------------------------------------
+train_balanced = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), nrow(allsupporters)),] )
+#shuffle it
+train_balanced = train_balanced[sample(1:nrow(train_balanced), nrow(train_balanced)),]
+
+# balanced 2 ---------------------------------------------------------------------------
+
+train_balanced2 = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), 3*nrow(allsupporters)),] )
+#shuffle it
+train_balanced2 = train_balanced2[sample(1:nrow(train_balanced2), nrow(train_balanced2)),]
+
+
+```
+
+
+```{r}
+nrow(train)
+```
+```{r}
+nrow(train_balanced)
+length(which(train_balanced$Supporter.Status. == 1))
+length(which(train_balanced$Supporter.Status. == 0))
+
+train_balanced
+```
+
+
+
+#Train: drop username, country
+```{r}
+train_balanced_without_username = train_balanced
+train_balanced_without_username$Username = NULL
+train_balanced_without_username$Country = NULL
+train_balanced_without_username$RankColour = NULL
+```
+
+```{r}
+#boxplot(train_balanced_without_username$Supporter.Status.)
+hist(train_balanced_without_username$Supporter.Status.)
+
+length(which(train_balanced_without_username$Supporter.Status. == 1))
+length(which(train_balanced_without_username$Supporter.Status. == 0))
+```
+
+
+
+
+```{r}
+cartfittrain_balanced = rpart(Supporter.Status.~., dat=train_balanced_without_username[train_balanced_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+rpart.plot(cartfittrain_balanced, type=2)
+```
+```{r}
+test_balanced_result = predict(cartfittrain, newdata=train_balanced_without_username, type="class")
+test_balanced_result
+```
+
+
+```{r}
+table(train_balanced_without_username$Supporter.Status., test_balanced_result)
+```
+```{r}
+nrow(train_balanced2)
+length(which(train_balanced2$Supporter.Status. == 1))
+length(which(train_balanced2$Supporter.Status. == 0))
+
+train_balanced2
+```
+#Train balanced2: drop username, country
+```{r}
+train_balanced2_without_username = train_balanced2
+train_balanced2_without_username$Username = NULL
+train_balanced2_without_username$Country = NULL
+train_balanced2_without_username$RankColour = NULL
+
+#YOU DONT TEST ON BALANCED
+
+```
+
+
+```{r}
+cartfittrain_balanced2 = rpart(Supporter.Status.~., dat=train_balanced2_without_username, method="class", control=rpart.control(minsplit=4, cp=0.03))
+rpart.plot(cartfittrain_balanced2, type=2)
+```
+```{r}
+summary(cartfittrain_balanced2)
+```
+
+
+
+```{r}
+test_balanced2_result = predict(cartfittrain_balanced2, newdata=test_without_username, type="class")
+test_balanced2_result
+```
+```{r}
+nrow(test_balanced2_result)
+```
+```{r}
+nrow(test_without_username)
+```
+
+
+
+```{r}
+a = table(test_without_username$Supporter.Status., test_balanced2_result)
+table(test_without_username$Supporter.Status., test_balanced2_result)
+```
+```{r}
+#(2914+524)/4328
+(3450+44)/3977
+proportions(a,1)
+```
+```{r}
+(3450+44)/3977
+```
+
+```{r}
+length(which(test_without_username$Supporter.Status. == 1))
+length(which(test_without_username$Supporter.Status. == 0))
+```
+```{r}
+train_balanced2_without_username
+str(train_balanced2_without_username)
+
+train_balanced3_without_username= train_balanced2_without_username
+train_balanced3_without_username$Supporter.Status. = as.factor(train_balanced3_without_username$Supporter.Status.)
+
+
+train_balanced3_without_username_no_support = train_balanced2_without_username
+#train_balanced3_without_username_no_support = train_balanced3_without_username_no_support$supporter.status. = NULL
+
+train_balanced3_without_username_no_support$Supporter.Status. = NULL
+train_balanced3_without_username_no_support
+```
+```{r}
+train_balanced3_without_username_no_support
+```
+
+
+## C4.5 Tetris Decision Tree
+
+```{r}
+# C4.5 Decision Tree
+library(RWeka)
+#help(J48)
+
+treeC45 <- J48(train_balanced3_without_username$Supporter.Status.~., data = train_balanced3_without_username)
+
+print(treeC45)
+summary(treeC45)
+```
+
+```{r}
+sink("tree_output.txt")
+print(treeC45)
+sink()
+```
+
+```{r}
+test_balanced2_C45result = predict(treeC45, newdata=test_without_username, type="class")
+test_balanced2_C45result
+```
+
+
+```{r}
+table(test_without_username$Supporter.Status., test_balanced2_C45result)
+```
+```{r}
+#C45 Accuracy
+(3339+63)/3977
+```
+
+
+
+## C5.0 Tetris Decision Tree
+```{r}
+#install.packages("C50")
+library(C50)
+#help(C50)
+#dattree50 = C5.0(x=dat[,c(1,2,5,6, 9:13)], y=dat$income)
+treeC50 = C5.0(x=train_balanced3_without_username_no_support, y=train_balanced3_without_username$Supporter.Status)
+```
+
+```{r}
+plot(treeC50)
+```
+```{r}
+treeC50
+```
+```{r}
+summary(treeC50)
+```
+
+
+
+```{r}
+test_balanced2_C50result = predict(treeC50, newdata=test_without_username, type="class")
+test_balanced2_C50result
+```
+
+
+```{r}
+summary(test_balanced2_C50result)
+```
+
+```{r}
+table(test_without_username$Supporter.Status., test_balanced2_C50result)
+```
+```{r}
+#C50 Accuracy
+(3451+44)/3977
+```
+
