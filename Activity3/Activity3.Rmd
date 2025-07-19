@@ -23,9 +23,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load packages}
+library(ggplot2)
 library(rpart.plot)
 library(factoextra)
-library(ggplot2)
+
 ```
 
 # Activity3
@@ -182,7 +183,8 @@ data_standardized
 
 <hr>
 
-# KNN (Sophie)
+
+
 
 
 
@@ -342,6 +344,8 @@ kmeans_result10 <- kmeans(cluster_data_scaled, centers = 10)
 kmeans_result10$cluster
 ```
 ```{r}
+library(ggplot2)
+
 # Plot using PCA
 pca <- prcomp(cluster_data_scaled)
 pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result10$cluster))
@@ -377,26 +381,7 @@ plot(1:10, unlist(wss_parallel), type = "b",
      main = "Elbow Method (Parallel)")
 
 ```
-```{r}
-library(parallel)
 
-# Use all available cores
-num_cores <- detectCores() - 1
-
-# Use full dataset (no sampling)
-full_data <- cluster_data_scaled
-
-# Custom WSS function using parallel
-wss_parallel <- mclapply(1:10, function(k) {
-  kmeans(full_data, centers = k, nstart = 10)$tot.withinss
-}, mc.cores = num_cores)
-
-# Plot elbow manually
-plot(1:10, unlist(wss_parallel), type = "b",
-     xlab = "Number of Clusters K",
-     ylab = "Total Within-Cluster Sum of Squares",
-     main = "Elbow Method (Full Dataset, Parallel)")
-```
 ```{r}
 # Find klynger med K-means (4 clusters)
 kmeans_result4 <- kmeans(cluster_data_scaled, centers = 4)
@@ -489,3 +474,93 @@ plot(2:10, unlist(silhouette_scores), type = "b",
      main = "Silhouette Method (Full Dataset, Parallel)")
 ```
 
+```{r}
+library(cluster)
+library(parallel)
+
+# Brug 3000 tilfældige rækker
+set.seed(123)
+sample_idx <- sample(1:nrow(cluster_data_scaled), size = 3000)
+sampled_data <- cluster_data_scaled[sample_idx, ]
+
+# Brug alle tilgængelige kerner minus 1
+num_cores <- detectCores() - 1
+
+# Parallel beregning af silhouette score
+silhouette_scores <- mclapply(2:10, function(k) {
+  km <- kmeans(sampled_data, centers = k, nstart = 10)
+  sil <- silhouette(km$cluster, dist(sampled_data))
+  mean(sil[, 3])  # gennemsnitlig silhouette-bredde
+}, mc.cores = num_cores)
+
+# Plot
+plot(2:10, unlist(silhouette_scores), type = "b",
+     xlab = "Antal klynger (k)",
+     ylab = "Gennemsnitlig Silhouette-bredde",
+     main = "Silhouette metode (sampled + parallel)")
+```
+
+
+# Silhuette score working on both mac and windows, but uses sample
+```{r}
+library(cluster)
+library(future.apply)
+
+# Planlæg multi-core backend
+plan(multisession)  # virker på både Windows og Mac
+
+# Sample
+sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 3000), ]
+
+# Parallel silhouette
+silhouette_scores <- future_lapply(2:10, function(k) {
+  km <- kmeans(sampled_data, centers = k, nstart = 10)
+  sil <- silhouette(km$cluster, dist(sampled_data))
+  mean(sil[, 3])
+})
+
+# Plot
+plot(2:10, unlist(silhouette_scores), type = "b",
+     xlab = "k", ylab = "Avg. Silhouette Width",
+     main = "Silhouette (Future Parallel, Sampled)")
+
+```
+
+
+
+
+
+
+# Silhuette score working on both mac and windows, but uses sample
+```{r}
+library(cluster)
+library(future.apply)
+
+# Brug hele datasættet
+full_data <- cluster_data_scaled
+
+# Planlæg multisession backend
+plan(multisession)  # virker på både Windows og macOS
+
+# Parallel silhouette beregning (k = 2:10)
+silhouette_scores <- future_lapply(2:10, function(k) {
+  km <- kmeans(full_data, centers = k, nstart = 10)
+  
+  # OBS: dist() kan kræve meget RAM!
+  dists <- dist(full_data)
+  sil <- silhouette(km$cluster, dists)
+  mean(sil[, 3])
+})
+
+# Plot
+plot(2:10, unlist(silhouette_scores), type = "b",
+     xlab = "Antal klynger (k)",
+     ylab = "Gns. silhouette-score",
+     main = "Silhouette-metode (Hele datasættet, parallel)")
+```
+
+# KNN (Sophie)
+
+```{r}
+# sophies code will come here
+```
