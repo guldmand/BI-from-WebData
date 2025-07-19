@@ -78,6 +78,14 @@ train = train[sample(1:nrow(train), nrow(train)),]
 
 
 library("nnet")
+#try with entire dataset first (unbalanced)
+neuralnetunbalanced = nnet(Supporter.Status. ~ ., data=data_normalized, size=3)
+unbalancedPredict = predict(neuralnetunbalanced, data_normalized, type="class")
+unbalancedTable = table(data_normalized$Supporter.Status., unbalancedPredict)
+unbalancedTable
+#no good, just collapses all predictions to 'No'
+
+#try with balanced dataset, many sizes of hidden layer
 for (i in c(1,2,3,5,10,15,20,30)) {
   neuralnet1 = nnet(Supporter.Status. ~ ., data=train, size=i, trace=F)
   
@@ -92,7 +100,8 @@ for (i in c(1,2,3,5,10,15,20,30)) {
   cat(i, "Nodes, Train Correct %:", 
         proportions(trainPredictTable1)[1] + proportions(trainPredictTable1)[4],
       ", Test Correct %:", 
-      proportions(testProportionTable1)[1] + proportions(testProportionTable1)[4], "\n")  
+      proportions(testPredictTable1)[1] + proportions(testPredictTable1)[4],
+      "My Metric %:", (testProportionTable1[1]+testProportionTable1[4])/2, "\n")  
 }
 
 
