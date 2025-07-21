@@ -1,0 +1,1615 @@
+---
+title: "Business Intelligence from Web Data Analytics and Data Mining using R and
+  AI - Activity3"
+author: "Jannik Guldmand, Sophia Klimova & Adam Dapoz"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: false
+    theme: flatly
+    highlight: tango
+    df_print: paged
+    code_folding: show
+  pdf_document:
+    toc: true
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(ggplot2)
+library(rpart.plot)
+library(factoextra)
+
+```
+
+# Activity3
+
+## Introduction 
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam nec orci vitae ligula pretium sollicitudin. Sed sed efficitur nulla. Morbi sed mollis odio, at interdum est. In at imperdiet metus, ac placerat elit. Maecenas dictum sit amet arcu in cursus. Integer dictum elementum dui, id interdum sem consequat in. Nullam sapien ligula, elementum id nisi at, convallis sollicitudin elit. Sed luctus pulvinar lobortis. Quisque a diam in arcu vulputate scelerisque. Aliquam lobortis aliquet dui, varius imperdiet libero interdum non.
+
+## Requirements & Goals
+* Try to Predict/Classify if a player is gonna support
+* Try to Predict a players Rank
+
+
+# Data
+```{r load data}
+data = read.csv("tldata.csv")
+head(data)
+summary(data)
+str(data)
+```
+
+
+
+```{r prparing the data}
+## Preparing the data
+
+#make some things factors
+data$Country           = as.factor(data$Country)
+
+data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
+data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
+data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
+data$Country           = as.factor(data$Country)
+
+data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
+
+data$Active.This.Week = as.factor(data$Active.This.Week)
+data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
+
+data$Supporter.Status. = as.factor(data$Supporter.Status.)
+data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
+
+data$Wins = as.numeric(data$Wins)
+data$Games.Played = as.numeric(data$Games.Played)
+
+data$Username = as.character(data$Username)
+
+
+#remove index (standing does this)
+data$X = NULL
+str(data)
+
+
+
+
+```
+
+```{r random seed}
+set.seed(4)
+```
+
+
+## splitting into test and train
+```{r defining data splits}
+num_of_splits = 10
+splits = sample( rep(1:num_of_splits, ceiling(nrow(data)/num_of_splits) ), nrow(data) )
+```
+
+```{r check for uniform-distribution}
+#check for uniform-distribution
+summary(as.factor(splits))
+str(splits)
+```
+
+```{r splitting data}
+train = data[splits!=1,]
+test = data[splits==1,]
+
+#nrow(train) + nrow(test)
+#nrow(test)
+
+#dynamically
+#testdata(7)
+#=> train
+#=>test
+
+```
+
+## Normalizing data
+```{r normalizing data}
+data_normalized = data
+
+for(i in c(1,4,5,6,7,8,9,10,11,12)) {
+  data_normalized[,i] = scale(
+                              data_normalized[,i], 
+                              center=min(data_normalized[,i]), 
+                              scale=max(data_normalized[,i])-min(data_normalized[,i]))
+}
+
+str(data_normalized, give.attr=F)
+```
+
+
+## Handling flags
+```{r handling flags}
+#handling flags
+#turn rank factor into flags
+for (i in 1:length(levels(data_normalized$Rank))) {
+  data_normalized[,ncol(data_normalized)+1] = 0 #make new column
+  #set appropriate ones to 1
+  data_normalized[
+    data_normalized$Rank == levels(data_normalized$Rank)[i], #select rows matching rank
+    ncol(data_normalized)] = 1 #select last column (just added)
+  
+  varname = sprintf( "flag%sRank", levels(data_normalized$Rank)[i] )
+  varname = sub("+", "Plus", varname, fixed=T) #fixed=T treats '+' literal
+  varname = sub("-", "Minus", varname, fixed=T)
+  names(data_normalized)[ ncol(data_normalized) ] = varname
+}
+
+# remove orig rank var and remove one flag
+data_normalized$Rank = NULL
+data_normalized$flagDrank = NULL
+
+str(data_normalized, give.attr=F)
+```
+```{r}
+#train
+```
+
+## Balancing the data
+```{r balancing data}
+#make training set with higher proportion of supporters (50/50 split)
+allsupporters = data[data_normalized$Supporter.Status. == 1,]
+allnonsupporters = data[data_normalized$Supporter.Status. == 0,]
+
+allsupporters
+allnonsupporters
+train_balanced = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), nrow(allsupporters)),] )
+#shuffle it
+train_balanced = train_balanced[sample(1:nrow(train), nrow(train)),]
+```
+
+## Z-score standardizing data
+```{r z-score standardizing data}
+# Z-score standardization
+data_standardized = data
+
+#standardization of numeric variables, for decision trees is not necessary
+data_standardized$Wins.s = (data$Wins - mean(data$Wins))/sd(data$Wins)
+data_standardized$Games.Played.s = (data$Games.Played - mean(data$Games.Played))/sd(data$Games.Played)
+data_standardized$Tetra.Rating.s = (data$Tetra.Rating - mean(data$Tetra.Rating))/sd(data$Tetra.Rating)
+
+data_standardized
+```
+
+
+<hr>
+
+# Decision Trees (Jannik)
+
+
+```{r}
+# Tree data
+#data_without_support = data
+#test_without_support = test
+#train_without_support = train
+
+#drop support
+#data_without_support$Supporter.Status. = NULL
+#test_without_support$Supporter.Status. = NULL
+#train_without_support$Supporter.Status. = NULL
+
+#Train: drop username, country
+train_without_username = train
+train_without_username$Username = NULL
+train_without_username$Country = NULL
+
+#Test: drop username, country
+test_without_username = test
+test_without_username$Username = NULL
+test_without_username$Country = NULL
+
+train_balanced_without_username = train_balanced
+train_balanced_without_username$Username = NULL
+train_balanced_without_username$Country = NULL
+
+#train_without_username$Standing = NULL
+```
+
+```{r}
+#train_without_username
+train_balanced_without_username
+```
+
+## First-Try: CART v1, CART v2, Cart v3
+```{r}
+set.seed(1)
+#cartfittrain = rpart(Supporter.Status.~., dat=train_without_username, method="class", control=rpart.control(minsplit=4, cp=0.0015))
+cartfittrain = rpart(Supporter.Status.~., dat=train_balanced_without_username, method="class", control=rpart.control(minsplit=4, cp=0.003))
+#cartfittrain = rpart(Supporter.Status.~ Glicko.Rating+Country, dat=train_without_username, method="class")
+rpart.plot(cartfittrain, type=2)
+#control=rpart.control(cp=0.0005)
+#min-splits
+
+```
+
+## CART v2
+```{r}
+train_without_username
+cartfittrain2 = rpart(Supporter.Status.~., dat=train_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+
+rpart.plot(cartfittrain2, type=2)
+```
+```{r}
+str(train_without_username)
+```
+
+## CART v3
+```{r}
+cartfittest2 = rpart(Supporter.Status.~., dat=test_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+
+rpart.plot(cartfittest2, type=2)
+```
+```{r}
+str(test_without_username)
+```
+
+## Second-Try(Balanced): CART v4,v5,v6 , C4.5 v1 & C5.0 v1
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+
+## Tetris Decision Tree Test
+
+
+```{r load the tetris data 1}
+data = read.csv("tldata.csv")
+```
+
+
+## Prepare the data (Activity 2)
+```{r}
+## Preparing the data
+
+#make some things factors
+data$Country           = as.factor(data$Country)
+
+data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
+data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
+data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
+data$Country           = as.factor(data$Country)
+
+data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
+
+data$Active.This.Week = as.factor(data$Active.This.Week)
+data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
+
+data$Supporter.Status. = as.factor(data$Supporter.Status.)
+data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
+
+data$Wins = as.numeric(data$Wins)
+data$Games.Played = as.numeric(data$Games.Played)
+
+data$Username = as.character(data$Username)
+
+
+#remove index (standing does this)
+data$X = NULL
+str(data)
+```
+
+## splitting into test and train
+```{r}
+set.seed(4)
+num_of_splits = 10
+splits = sample( rep(1:num_of_splits, ceiling(nrow(data)/num_of_splits) ), nrow(data) )
+#splits
+```
+
+## put data into test and train
+```{r}
+train = data[splits!=1,]
+test = data[splits==1,]
+```
+
+```{r}
+nrow(test)
+nrow(train)
+```
+
+
+
+## Custom prepare data for decisiontree
+```{r}
+#Train: drop username, country
+train_without_username = train
+train_without_username$Username = NULL
+train_without_username$Country = NULL
+train_without_username$RankColour = NULL
+
+#Test: drop username, country
+test_without_username = test
+test_without_username$Username = NULL
+test_without_username$Country = NULL
+test_without_username$RankColour = NULL
+```
+
+```{r}
+nrow(test_without_username)
+nrow(train_without_username)
+```
+
+
+
+```{r}
+train_without_username
+```
+```{r}
+test_without_username
+```
+
+
+## CART Tetris Decision Tree (TRAIN)
+Not using entroy but maximizing split difference 
+
+```{r}
+cartfittrain = rpart(Supporter.Status.~., dat=train_without_username[train_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+rpart.plot(cartfittrain, type=2)
+```
+
+
+
+```{r}
+test_result = predict(cartfittrain, newdata=test_without_username, type="class")
+test_result
+```
+
+```{r}
+table(test_without_username$Supporter.Status., test_result)
+```
+### Lets try to balance the data
+
+```{r}
+#make training set with higher proportion of supporters (50/50 split)
+allsupporters = data[data$Supporter.Status. == 1,]
+allnonsupporters = data[data$Supporter.Status. == 0,]
+
+allsupporters
+allnonsupporters
+
+# balanced 1 ---------------------------------------------------------------------------
+train_balanced = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), nrow(allsupporters)),] )
+#shuffle it
+train_balanced = train_balanced[sample(1:nrow(train_balanced), nrow(train_balanced)),]
+
+# balanced 2 ---------------------------------------------------------------------------
+
+train_balanced2 = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), 3*nrow(allsupporters)),] )
+#shuffle it
+train_balanced2 = train_balanced2[sample(1:nrow(train_balanced2), nrow(train_balanced2)),]
+
+
+```
+
+
+```{r}
+nrow(train)
+```
+```{r}
+nrow(train_balanced)
+length(which(train_balanced$Supporter.Status. == 1))
+length(which(train_balanced$Supporter.Status. == 0))
+
+train_balanced
+```
+
+
+
+#Train: drop username, country
+```{r}
+train_balanced_without_username = train_balanced
+train_balanced_without_username$Username = NULL
+train_balanced_without_username$Country = NULL
+train_balanced_without_username$RankColour = NULL
+```
+
+```{r}
+#boxplot(train_balanced_without_username$Supporter.Status.)
+hist(train_balanced_without_username$Supporter.Status.)
+
+length(which(train_balanced_without_username$Supporter.Status. == 1))
+length(which(train_balanced_without_username$Supporter.Status. == 0))
+```
+
+
+
+
+```{r}
+cartfittrain_balanced = rpart(Supporter.Status.~., dat=train_balanced_without_username[train_balanced_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+rpart.plot(cartfittrain_balanced, type=2)
+```
+```{r}
+test_balanced_result = predict(cartfittrain, newdata=train_balanced_without_username, type="class")
+test_balanced_result
+```
+
+
+```{r}
+table(train_balanced_without_username$Supporter.Status., test_balanced_result)
+```
+```{r}
+nrow(train_balanced2)
+length(which(train_balanced2$Supporter.Status. == 1))
+length(which(train_balanced2$Supporter.Status. == 0))
+
+train_balanced2
+```
+#Train balanced2: drop username, country
+```{r}
+train_balanced2_without_username = train_balanced2
+train_balanced2_without_username$Username = NULL
+train_balanced2_without_username$Country = NULL
+train_balanced2_without_username$RankColour = NULL
+
+#YOU DONT TEST ON BALANCED
+
+```
+
+
+```{r}
+cartfittrain_balanced2 = rpart(Supporter.Status.~., dat=train_balanced2_without_username, method="class", control=rpart.control(minsplit=4, cp=0.03))
+rpart.plot(cartfittrain_balanced2, type=2)
+```
+```{r}
+summary(cartfittrain_balanced2)
+```
+
+
+
+```{r}
+test_balanced2_result = predict(cartfittrain_balanced2, newdata=test_without_username, type="class")
+test_balanced2_result
+```
+```{r}
+nrow(test_balanced2_result)
+```
+```{r}
+nrow(test_without_username)
+```
+
+
+
+```{r}
+a = table(test_without_username$Supporter.Status., test_balanced2_result)
+table(test_without_username$Supporter.Status., test_balanced2_result)
+```
+```{r}
+#(2914+524)/4328
+(3450+44)/3977
+proportions(a,1)
+```
+```{r}
+(3450+44)/3977
+```
+
+```{r}
+length(which(test_without_username$Supporter.Status. == 1))
+length(which(test_without_username$Supporter.Status. == 0))
+```
+```{r}
+train_balanced2_without_username
+str(train_balanced2_without_username)
+
+train_balanced3_without_username= train_balanced2_without_username
+train_balanced3_without_username$Supporter.Status. = as.factor(train_balanced3_without_username$Supporter.Status.)
+
+
+train_balanced3_without_username_no_support = train_balanced2_without_username
+#train_balanced3_without_username_no_support = train_balanced3_without_username_no_support$supporter.status. = NULL
+
+train_balanced3_without_username_no_support$Supporter.Status. = NULL
+train_balanced3_without_username_no_support
+```
+```{r}
+train_balanced3_without_username_no_support
+```
+
+
+## C4.5 Tetris Decision Tree
+
+```{r}
+# C4.5 Decision Tree
+library(RWeka)
+#help(J48)
+
+treeC45 <- J48(train_balanced3_without_username$Supporter.Status.~., data = train_balanced3_without_username)
+
+print(treeC45)
+summary(treeC45)
+```
+
+```{r}
+sink("tree_output.txt")
+print(treeC45)
+sink()
+```
+
+```{r}
+test_balanced2_C45result = predict(treeC45, newdata=test_without_username, type="class")
+test_balanced2_C45result
+```
+
+
+```{r}
+table(test_without_username$Supporter.Status., test_balanced2_C45result)
+```
+```{r}
+#C45 Accuracy
+(3339+63)/3977
+```
+
+
+
+## C5.0 Tetris Decision Tree
+```{r}
+#install.packages("C50")
+library(C50)
+#help(C50)
+#dattree50 = C5.0(x=dat[,c(1,2,5,6, 9:13)], y=dat$income)
+treeC50 = C5.0(x=train_balanced3_without_username_no_support, y=train_balanced3_without_username$Supporter.Status)
+```
+
+```{r}
+plot(treeC50)
+```
+```{r}
+treeC50
+```
+```{r}
+summary(treeC50)
+```
+
+
+
+```{r}
+test_balanced2_C50result = predict(treeC50, newdata=test_without_username, type="class")
+test_balanced2_C50result
+```
+
+
+```{r}
+summary(test_balanced2_C50result)
+```
+
+```{r}
+table(test_without_username$Supporter.Status., test_balanced2_C50result)
+```
+```{r}
+#C50 Accuracy
+(3451+44)/3977
+```
+
+
+
+
+
+## Tird-Try(Balanced): CART v7,v8,v9 , C4.5 v2 & C5.0 v2
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+
+## Tetris Decision Tree Test
+
+
+```{r load the tetris data 2}
+data = read.csv("tldata.csv")
+```
+
+
+## Prepare the data (Activity 2)
+```{r}
+## Preparing the data
+
+#make some things factors
+data$Country           = as.factor(data$Country)
+
+data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
+data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
+data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
+data$Country           = as.factor(data$Country)
+
+# Removing highly correlated variables
+data$Standing  = NULL
+data$Wins  = NULL
+data$PPS  = NULL
+data$Tetra.Rating  = NULL
+data$VS  = NULL
+
+#data$Rank = NULL
+data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
+
+data$Active.This.Week = as.factor(data$Active.This.Week)
+data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
+
+data$Supporter.Status. = as.factor(data$Supporter.Status.)
+data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
+
+#data$Wins = as.numeric(data$Wins)
+data$Games.Played = as.numeric(data$Games.Played)
+
+data$Username = as.character(data$Username)
+
+
+#remove index (standing does this)
+data$X = NULL
+str(data)
+```
+
+## splitting into test and train
+```{r}
+set.seed(4)
+num_of_splits = 10
+splits = sample( rep(1:num_of_splits, ceiling(nrow(data)/num_of_splits) ), nrow(data) )
+#splits
+```
+
+## put data into test and train
+```{r}
+train = data[splits!=1,]
+test = data[splits==1,]
+```
+
+```{r}
+nrow(test)
+nrow(train)
+```
+
+
+
+## Custom prepare data for decisiontree
+```{r}
+#Train: drop username, country
+train_without_username = train
+train_without_username$Username = NULL
+train_without_username$Country = NULL
+train_without_username$RankColour = NULL
+
+#Test: drop username, country
+test_without_username = test
+test_without_username$Username = NULL
+test_without_username$Country = NULL
+test_without_username$RankColour = NULL
+```
+
+```{r}
+nrow(test_without_username)
+nrow(train_without_username)
+nrow(test_without_username) + nrow(train_without_username)
+```
+
+
+
+```{r}
+train_without_username
+```
+```{r}
+test_without_username
+```
+
+
+## CART Tetris Decision Tree (TRAIN)
+Not using entroy but maximizing split difference 
+
+```{r}
+top_400_glicko = train_without_username[order(-train_without_username$Glicko.Rating), ][1:400, ]
+cartfittrain = rpart(Supporter.Status.~., dat=top_400_glicko, method="class", control=rpart.control(minsplit=4, cp=0.020))
+
+rpart.plot(cartfittrain, type=2)
+```
+
+
+
+```{r}
+test_result = predict(cartfittrain, newdata=test_without_username, type="class")
+test_result
+```
+
+```{r}
+table(test_without_username$Supporter.Status., test_result)
+```
+### Lets try to balance the data
+
+```{r}
+#make training set with higher proportion of supporters (50/50 split)
+allsupporters = data[data$Supporter.Status. == 1,]
+allnonsupporters = data[data$Supporter.Status. == 0,]
+
+allsupporters
+allnonsupporters
+
+# balanced 1 ---------------------------------------------------------------------------
+train_balanced = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), nrow(allsupporters)),] )
+#shuffle it
+train_balanced = train_balanced[sample(1:nrow(train_balanced), nrow(train_balanced)),]
+
+# balanced 2 ---------------------------------------------------------------------------
+
+train_balanced2 = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), 3*nrow(allsupporters)),] )
+#shuffle it
+train_balanced2 = train_balanced2[sample(1:nrow(train_balanced2), nrow(train_balanced2)),]
+
+
+```
+
+
+```{r}
+nrow(train)
+```
+```{r}
+nrow(train_balanced)
+length(which(train_balanced$Supporter.Status. == 1))
+length(which(train_balanced$Supporter.Status. == 0))
+
+train_balanced
+```
+
+
+
+#Train: drop username, country
+```{r}
+train_balanced_without_username = train_balanced
+train_balanced_without_username$Username = NULL
+train_balanced_without_username$Country = NULL
+train_balanced_without_username$RankColour = NULL
+```
+
+```{r}
+#boxplot(train_balanced_without_username$Supporter.Status.)
+hist(train_balanced_without_username$Supporter.Status.)
+
+length(which(train_balanced_without_username$Supporter.Status. == 1))
+length(which(train_balanced_without_username$Supporter.Status. == 0))
+```
+
+
+
+
+```{r}
+#cartfittrain_balanced = rpart(Supporter.Status.~., dat=train_balanced_without_username[train_balanced_without_username$Standing<400,], method="class", control=rpart.control(minsplit=4, cp=0.03))
+#rpart.plot(cartfittrain_balanced, type=2)
+```
+
+```{r}
+top_400_glicko = train_without_username[order(-train_without_username$Glicko.Rating), ][1:400, ]
+cartfittrain_balanced = rpart(Supporter.Status.~., dat=top_400_glicko, method="class", control=rpart.control(minsplit=4, cp=0.02))
+rpart.plot(cartfittrain_balanced, type=2)
+```
+
+```{r}
+test_balanced_result = predict(cartfittrain, newdata=train_balanced_without_username, type="class")
+test_balanced_result
+```
+
+
+```{r}
+table(train_balanced_without_username$Supporter.Status., test_balanced_result)
+```
+```{r}
+nrow(train_balanced2)
+length(which(train_balanced2$Supporter.Status. == 1))
+length(which(train_balanced2$Supporter.Status. == 0))
+
+train_balanced2
+```
+#Train balanced2: drop username, country
+```{r}
+train_balanced2_without_username = train_balanced2
+train_balanced2_without_username$Username = NULL
+train_balanced2_without_username$Country = NULL
+train_balanced2_without_username$RankColour = NULL
+
+#YOU DONT TEST ON BALANCED
+
+```
+
+
+```{r}
+train_balanced2_without_username
+```
+
+
+```{r}
+cartfittrain_balanced2 = rpart(Supporter.Status.~., dat=train_balanced2_without_username, method="class", control=rpart.control(minsplit=4, cp=0.03))
+rpart.plot(cartfittrain_balanced2, type=2)
+```
+```{r}
+summary(cartfittrain_balanced2)
+```
+
+
+
+```{r}
+test_balanced2_result = predict(cartfittrain_balanced2, newdata=test_without_username, type="class")
+test_balanced2_result
+```
+```{r}
+nrow(test_balanced2_result)
+```
+```{r}
+nrow(test_without_username)
+```
+
+
+
+```{r}
+a = table(test_without_username$Supporter.Status., test_balanced2_result)
+table(test_without_username$Supporter.Status., test_balanced2_result)
+```
+```{r}
+#(2914+524)/4328
+(3450+44)/3977
+proportions(a,1)
+```
+```{r}
+#(3450+44)/3977
+(3673+30)/3977
+(3673+30)/3977
+```
+
+```{r}
+length(which(test_without_username$Supporter.Status. == 1))
+length(which(test_without_username$Supporter.Status. == 0))
+```
+```{r}
+train_balanced2_without_username
+str(train_balanced2_without_username)
+
+train_balanced3_without_username= train_balanced2_without_username
+train_balanced3_without_username$Supporter.Status. = as.factor(train_balanced3_without_username$Supporter.Status.)
+
+
+train_balanced3_without_username_no_support = train_balanced2_without_username
+#train_balanced3_without_username_no_support = train_balanced3_without_username_no_support$supporter.status. = NULL
+
+train_balanced3_without_username_no_support$Supporter.Status. = NULL
+train_balanced3_without_username_no_support
+```
+```{r}
+train_balanced3_without_username_no_support
+```
+
+
+## C4.5 Tetris Decision Tree
+
+```{r}
+# C4.5 Decision Tree
+library(RWeka)
+#help(J48)
+
+treeC45 <- J48(train_balanced3_without_username$Supporter.Status.~., data = train_balanced3_without_username)
+
+print(treeC45)
+summary(treeC45)
+```
+
+```{r}
+sink("tree_output.txt")
+print(treeC45)
+sink()
+```
+
+```{r}
+test_balanced2_C45result = predict(treeC45, newdata=test_without_username, type="class")
+test_balanced2_C45result
+```
+
+
+```{r}
+table(test_without_username$Supporter.Status., test_balanced2_C45result)
+```
+```{r}
+#C45 Accuracy
+#(3339+63)/3977
+(3564+40)/3977
+(3564+33)/3977
+```
+
+```{r}
+train_balanced3_without_username_no_support
+```
+
+
+
+## C5.0 Tetris Decision Tree
+```{r}
+#install.packages("C50")
+library(C50)
+#help(C50)
+#dattree50 = C5.0(x=dat[,c(1,2,5,6, 9:13)], y=dat$income)
+treeC50 = C5.0(x=train_balanced3_without_username_no_support, y=train_balanced3_without_username$Supporter.Status)
+```
+
+```{r}
+plot(treeC50)
+```
+```{r}
+treeC50
+```
+```{r}
+summary(treeC50)
+```
+
+
+
+```{r}
+test_balanced2_C50result = predict(treeC50, newdata=test_without_username, type="class")
+test_balanced2_C50result
+```
+
+
+```{r}
+summary(test_balanced2_C50result)
+```
+
+```{r}
+table(test_without_username$Supporter.Status., test_balanced2_C50result)
+```
+```{r}
+#C50 Accuracy
+(3451+44)/3977
+(3398+53)/3977
+(3643+30)/3977 # with rank
+(3552 + 37)/3977
+```
+```{r}
+train_balanced3_without_username
+```
+
+
+
+
+
+
+
+
+<hr>
+# Clustering (Jannik)
+
+
+## preparing data for clustering
+```{r}
+data2 = read.csv("tldata.csv")
+cluster_data = data2
+
+#drop unnecessary columns
+cluster_data$X = NULL
+cluster_data$Username = NULL
+cluster_data$Country = NULL
+cluster_data$RankColour = NULL
+
+# Removing highly correlated variables
+cluster_data$Standing  = NULL
+cluster_data$Wins  = NULL
+cluster_data$PPS  = NULL
+cluster_data$Tetra.Rating  = NULL
+cluster_data$VS  = NULL
+
+#converting charecter to factors
+cluster_data$Rank = as.factor(cluster_data$Rank)
+cluster_data$Active.This.Week = as.factor(cluster_data$Active.This.Week)
+cluster_data$Supporter.Status. = as.factor(cluster_data$Supporter.Status.)
+
+# generate dummy-variabler using model.matrix
+dummy_vars <- model.matrix(~ Rank + Active.This.Week + Supporter.Status. - 1, data = cluster_data)
+
+# combine de numeriske data and dummy variables
+numeric_data <- cluster_data[sapply(cluster_data, is.numeric)]
+numeric_cluster_data <- cbind(numeric_data, dummy_vars)
+
+str(numeric_cluster_data)
+```
+
+```{r}
+numeric_cluster_data
+```
+```{r}
+head(dummy_vars[, grepl("Rank", colnames(dummy_vars))])
+```
+```{r}
+#controling of dummyvariables was done correctly
+
+#which(numeric_cluster_data$`RankA` == 1)
+#which(numeric_cluster_data$`RankA-` == 1)
+#which(numeric_cluster_data$`RankA+` == 1)
+#which(numeric_cluster_data$`RankB+` == 1)
+#which(numeric_cluster_data$`RankB-` == 1)
+#which(numeric_cluster_data$`RankB+` == 1)
+#which(numeric_cluster_data$`RankC` == 1)
+#which(numeric_cluster_data$`RankC+` == 1)
+#which(numeric_cluster_data$`RankC-` == 1)
+```
+
+
+```{r}
+# Standardiser (skalering)
+cluster_data_scaled <- scale(numeric_cluster_data)
+
+# Find klynger med K-means (10 clusters)
+kmeans_result10 <- kmeans(cluster_data_scaled, centers = 10)
+
+# found clusters
+kmeans_result10$cluster
+```
+```{r}
+library(ggplot2)
+
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result10$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering with 10 clusters (with highly correlated variables removed)")
+```
+
+## Elbow Plot
+### Elbow Plot (Never finishes)
+```{r}
+# Code was running slow and the ammount of data points made R-studio Crash
+
+# Elbow methode using fviz_nbclust to plot total  within-cluster sum of squares (WSS)
+#fviz_nbclust(cluster_data_scaled, kmeans, method = "wss") + labs(subtitle = "Elbow method")
+```
+
+
+
+### Elbow Plot (Mac Only)
+```{r}
+  # library(parallel)
+  # 
+  # # Use all available cores
+  # num_cores <- detectCores() - 1
+  # 
+  # # Sample data
+  # sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 3000), ]
+  # 
+  # # Custom WSS function using parallel
+  # wss_parallel <- mclapply(1:10, function(k) {
+  #   kmeans(sampled_data, centers = k, nstart = 10)$tot.withinss
+  # }, mc.cores = num_cores)
+  # 
+  # # Plot elbow manually
+  # plot(1:10, unlist(wss_parallel), type = "b",
+  #      xlab = "Number of Clusters K",
+  #      ylab = "Total Within-Cluster Sum of Squares",
+  #      main = "Elbow Method (Parallel)")
+
+```
+
+```{r k-means k4}
+# Find klynger med K-means (4 clusters)
+kmeans_result4 <- kmeans(cluster_data_scaled, centers = 4)
+```
+
+```{r plot k-means k4}
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result4$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering with 4 clusters  (with highly correlated variables removed)")
+```
+## 3D Plotting the 4 Clusters
+
+```{r clustering 3d plot with 4 clusters}
+library(plotly)
+
+# PCA på de skalerede data
+pca <- prcomp(cluster_data_scaled)
+
+# Lav et data frame med de første tre komponenter + klynge labels
+pca_data <- data.frame(PC1 = pca$x[, 1],
+                       PC2 = pca$x[, 2],
+                       PC3 = pca$x[, 3],
+                       Cluster = factor(kmeans_result4$cluster))  # 4 clusters
+
+# 3D plot med plotly
+plot_ly(pca_data, 
+        x = ~PC1, y = ~PC2, z = ~PC3, 
+        color = ~Cluster, 
+        colors = c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"),  # fire farver
+        type = "scatter3d", 
+        mode = "markers") %>%
+  layout(title = "3D K-means 4 Clusters ( 3 PCA without -h.correlated vars)")
+
+```
+
+
+```{r k4 pca summary}
+summary(pca)
+```
+
+```{r k4 pca rotation}
+pca$rotation
+```
+
+
+
+
+### silhuette score (never finishes)
+```{r silhuette 1}
+
+
+# Code was running slow and the ammount of data points made R-studio Crash
+#fviz_nbclust(cluster_data_scaled, kmeans, method = "silhouette") +
+#labs(subtitle = "Silhouette method")
+```
+
+
+### #silhuette score (Mac...Takes verry long time) 
+```{r silhuette 2}
+# library(cluster)
+# library(parallel)
+# 
+# # Use all available cores
+# num_cores <- detectCores() - 1
+# 
+# # Use full scaled dataset
+# full_data <- cluster_data_scaled
+# 
+# # Parallel silhouette score computation
+# silhouette_scores <- mclapply(2:10, function(k) {
+#   km_res <- kmeans(full_data, centers = k, nstart = 10)
+#   ss <- silhouette(km_res$cluster, dist(full_data))
+#   mean(ss[, 3])  # 3rd column = silhouette width
+# }, mc.cores = num_cores)
+# 
+# # Plot results
+# plot(2:10, unlist(silhouette_scores), type = "b",
+#      xlab = "Number of Clusters K",
+#      ylab = "Average Silhouette Width",
+#      main = "Silhouette Method (Full Dataset, Parallel)")
+```
+
+### #silhuette score (Mac only and Samplig) 
+```{r silhuette 3}
+# library(cluster)
+# library(parallel)
+# 
+# # Brug 3000 tilfældige rækker
+# set.seed(123)
+# sample_idx <- sample(1:nrow(cluster_data_scaled), size = 3000)
+# sampled_data <- cluster_data_scaled[sample_idx, ]
+# 
+# # Brug alle tilgængelige kerner minus 1
+# num_cores <- detectCores() - 1
+# 
+# # Parallel beregning af silhouette score
+# silhouette_scores <- mclapply(2:10, function(k) {
+#   km <- kmeans(sampled_data, centers = k, nstart = 10)
+#   sil <- silhouette(km$cluster, dist(sampled_data))
+#   mean(sil[, 3])  # gennemsnitlig silhouette-bredde
+# }, mc.cores = num_cores)
+# 
+# # Plot
+# plot(2:10, unlist(silhouette_scores), type = "b",
+#      xlab = "Antal klynger (k)",
+#      ylab = "Gennemsnitlig Silhouette-bredde",
+#      main = "Silhouette metode (sampled + parallel)")
+```
+
+
+### Silhuette score working on both mac and windows, but uses sample
+```{r silhuette 4}
+library(cluster)
+library(future.apply)
+
+plan(multisession)
+
+# Sample
+sampled_data <- cluster_data_scaled[sample(1:nrow(cluster_data_scaled), 10000), ]
+
+# Beregn silhouette scores
+k_values <- 2:20
+silhouette_scores <- future_lapply(k_values, function(k) {
+  km <- kmeans(sampled_data, centers = k, nstart = 10)
+  sil <- silhouette(km$cluster, dist(sampled_data))
+  mean(sil[, 3])
+})
+
+scores <- unlist(silhouette_scores)
+
+# Find optimal k og score
+best_index <- which.max(scores)
+best_k <- k_values[best_index]
+best_score <- scores[best_index]
+
+# Plot
+plot(2:20, unlist(silhouette_scores), type = "b",
+     xlab = "k", ylab = "Avg. Silhouette Width",
+     main = "Silhouette (Future Parallel, Sampled)",
+     xaxt = "n")  # Fjern x-aksen midlertidigt
+
+# Tilføj grid
+grid()
+
+# Tilføj alle heltal fra 2 til 20 på x-aksen
+axis(side = 1, at = 2:20)
+
+# Tilføj rød prik og label for optimal k
+best_k <- which.max(unlist(silhouette_scores)) + 1
+points(best_k, max(unlist(silhouette_scores)), col = "red", pch = 19)
+text(best_k, max(unlist(silhouette_scores)), 
+     labels = paste("Best k =", best_k), pos = 3, col = "red")
+
+```
+
+
+
+
+
+
+
+### 18 Clusters
+
+```{r clustering k18}
+# Find klynger med K-means (4 clusters)
+kmeans_result18 <- kmeans(cluster_data_scaled, centers = 18)
+```
+
+
+```{r clustering k18 2D plot}
+# Plot using PCA
+pca <- prcomp(cluster_data_scaled)
+pca_data <- data.frame(pca$x[, 1:2], Cluster = factor(kmeans_result18$cluster))
+ggplot(pca_data, aes(PC1, PC2, color = Cluster)) +
+  geom_point() +
+  ggtitle("K-means clustering with 18 clusters  (-highly correlated vars)")
+```
+
+```{r clustering k18 3d Plot}
+library(plotly)
+
+# PCA på de skalerede data
+pca <- prcomp(cluster_data_scaled)
+
+# Lav et data frame med de første tre komponenter + klynge labels
+pca_data <- data.frame(PC1 = pca$x[, 1],
+                       PC2 = pca$x[, 2],
+                       PC3 = pca$x[, 3],
+                       Cluster = factor(kmeans_result18$cluster))  # 4 clusters
+
+# 3D plot med plotly
+plot_ly(pca_data, 
+        x = ~PC1, y = ~PC2, z = ~PC3, 
+        color = ~Cluster, 
+        colors = c("#A763EA","#FF45FF","#FF3813","#DB8B1F","#D8AF0E","#E0A71B","#B2972B", "#1FA834", "#46AD51", "#3BB687", "#4F99C0", "#4F64C9", "#5650C7", "#552883", "#733E8F", "#79558C", "#6C496E", "#907591"),
+        type = "scatter3d", 
+        mode = "markers") %>%
+  layout(title = "3D K-means 18 Clusters ( without -h.correlated vars)")
+
+```
+
+
+```{r clustering k18 pca summary}
+summary(pca)
+```
+
+
+```{r clustering k18 pca rotation}
+pca$rotation
+```
+
+
+
+# Neural Networks (Adam)
+
+```{r Neural networks block1}
+#-------------------- Neural Net --------------------
+
+library(neuralnet)
+
+data = read.csv("tldata.csv")
+
+#make some things factors
+data$Country           = as.factor(data$Country)
+
+data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
+data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
+data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
+data$Country           = as.factor(data$Country)
+
+data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
+
+data$Active.This.Week = as.factor(data$Active.This.Week)
+data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
+
+data$Supporter.Status. = as.factor(data$Supporter.Status.)
+data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
+
+data$Wins = as.numeric(data$Wins)
+data$Games.Played = as.numeric(data$Games.Played)
+
+data$Username = as.character(data$Username)
+
+
+#remove index (standing does this)
+data$X = NULL
+str(data)
+
+#min max normalization
+data_normalized = data
+
+for(i in c(1,4,5,6,7,8,9,10,11,12)) {
+  data_normalized[,i] = scale(
+    data_normalized[,i], 
+    center=min(data_normalized[,i]), 
+    scale=max(data_normalized[,i])-min(data_normalized[,i]))
+}
+
+str(data_normalized, give.attr=F)
+
+#turn rank factor into flags
+for (i in 1:length(levels(data_normalized$Rank))) {
+  data_normalized[,ncol(data_normalized)+1] = 0 #make new column
+  #set appropriate ones to 1
+  data_normalized[
+    data_normalized$Rank == levels(data_normalized$Rank)[i], #select rows matching rank
+    ncol(data_normalized)] = 1 #select last column (just added)
+  
+  varname = sprintf( "flag%sRank", levels(data_normalized$Rank)[i] )
+  varname = sub("+", "Plus", varname, fixed=T) #fixed=T treats '+' literal
+  varname = sub("-", "Minus", varname, fixed=T)
+  names(data_normalized)[ ncol(data_normalized) ] = varname
+}
+
+# remove orig rank var and remove one flag
+data_normalized$Rank = NULL
+data_normalized$flagDRank = NULL
+
+#remove unneeded variables
+data_normalized$Username   = NULL
+data_normalized$Country    = NULL
+data_normalized$RankColour = NULL
+
+#remove correlated variables
+data_normalized$Standing     = NULL
+data_normalized$Wins         = NULL
+data_normalized$PPS          = NULL
+data_normalized$VS           = NULL
+data_normalized$Tetra.Rating = NULL
+
+#make target a factor again
+data_normalized$Supporter.Status. = as.factor(data_normalized$Supporter.Status.)
+levels(data_normalized$Supporter.Status.) = c("No", "Yes")
+
+str(data_normalized, give.attr=F)
+
+#make training set with higher proportion of supporters (50/50 split)
+allsupporters = data_normalized[data_normalized$Supporter.Status. == "Yes",]
+allnonsupporters = data_normalized[data_normalized$Supporter.Status. == "No",]
+train = rbind( allsupporters, 
+               allnonsupporters[sample(1:nrow(allnonsupporters), nrow(allsupporters)),] )
+#shuffle it
+train = train[sample(1:nrow(train), nrow(train)),]
+
+
+library("nnet")
+#try with entire dataset first (unbalanced)
+neuralnetunbalanced = nnet(Supporter.Status. ~ ., data=data_normalized, size=3)
+unbalancedPredict = predict(neuralnetunbalanced, data_normalized, type="class")
+unbalancedTable = table(data_normalized$Supporter.Status., unbalancedPredict)
+unbalancedTable
+#no good, just collapses all predictions to 'No'
+
+#try with balanced dataset, many sizes of hidden layer
+for (i in c(1,2,3,5,10,15,20,30)) {
+  neuralnet1 = nnet(Supporter.Status. ~ ., data=train, size=i, trace=F)
+  
+  trainPredict1 = predict(neuralnet1, train, type="class")
+  trainPredictTable1 = table(train$Supporter.Status., trainPredict1)
+  trainProportionTable1 = proportions(trainPredictTable1, 1)
+  
+  testPredict1 = predict(neuralnet1, data_normalized, type="class")
+  testPredictTable1 = table(data_normalized$Supporter.Status., testPredict1)
+  testProportionTable1 = proportions(testPredictTable1, 1)
+  
+  cat(i, "Nodes, Train Correct %:", 
+        proportions(trainPredictTable1)[1] + proportions(trainPredictTable1)[4],
+      ", Test Correct %:", 
+      proportions(testPredictTable1)[1] + proportions(testPredictTable1)[4],
+      "My Metric %:", (testProportionTable1[1]+testProportionTable1[4])/2, "\n")  
+}
+
+
+```
+
+```{r Neural networks block2}
+# NeuralNet – robust version
+
+library(neuralnet)
+
+neuralnet2 <- tryCatch({
+  neuralnet(Supporter.Status. ~ ., data = train,
+            hidden = 3, thresh = 0.01, rep = 1, lifesign = "full")
+}, error = function(e) {
+  message("Error under training: ", e$message)
+  NULL
+})
+
+if (!is.null(neuralnet2)) {
+  tryCatch({
+    plot(neuralnet2, show.weights = FALSE)
+  }, error = function(e) {
+    message("Plot could not be shown: ", e$message)
+  })
+} else {
+  message("Model was not created – no plot.")
+}
+```
+
+
+
+```{r Neural networks block3}
+
+if (!is.null(neuralnet2)) {
+  
+  estimateSupport2 <- tryCatch({
+    predict(neuralnet2, data_normalized)
+  }, error = function(e) {
+    message("Error running predict(): ", e$message)
+    NULL
+  })
+  
+  if (!is.null(estimateSupport2)) {
+    dichotPredict <- ifelse(estimateSupport2[, 2] >= estimateSupport2[, 1], "Yes", "No")
+    
+    estimateSupportTable2 <- table(data_normalized$Supporter.Status., dichotPredict)
+    proportionTable2 <- proportions(estimateSupportTable2, 1)
+    
+    estimateSupportTable2
+    proportionTable2
+    print(proportions(estimateSupportTable2)[1] + proportions(estimateSupportTable2)[4])
+  } else {
+    message("No prediction could be made – model or data failed.")
+  }
+  
+} else {
+  message("Neuralnet2 model does not exists – skipping prediction.")
+}
+```
+
+
+
+
+# KNN (Sophie)
+
+```{r}
+data = read.csv(file="tldata.csv", header=TRUE)
+
+data$Country           = as.factor(data$Country)
+
+data$Country = sub("Korea, Republic of", "Republic of Korea", data$Country)
+data$Country = sub("Venezuela, Bolivarian Republic of", "Republic of Venezuela", data$Country)
+data$Country = sub("Macedonia, the former Yugoslav Republic of", "Republic of Macedonia", data$Country)
+data$Country           = as.factor(data$Country)
+
+data$Rank              = factor(data$Rank, levels=c("D","D+","C-","C","C+","B-","B","B+","A-","A","A+","S-","S","S+","SS","U","X","X+"))
+
+data$Active.This.Week = as.factor(data$Active.This.Week)
+data$Active.This.Week = ifelse(data$Active.This.Week == "Yes", 1, 0)
+
+data$Supporter.Status. = as.factor(data$Supporter.Status.)
+data$Supporter.Status. = ifelse(data$Supporter.Status. == "Yes", 1, 0)
+
+data$Wins = as.numeric(data$Wins)
+data$Games.Played = as.numeric(data$Games.Played)
+
+data$Username = as.character(data$Username)
+
+
+#remove index (standing does this)
+data$X = NULL
+str(data)
+
+data_normalized = data
+# min-max normalization
+for(i in c(1,4,5,6,7,8,9,10,11,12)) {
+  data_normalized[,i] = scale(
+    data_normalized[,i], 
+    center=min(data_normalized[,i]), 
+    scale=max(data_normalized[,i])-min(data_normalized[,i]))
+}
+
+str(data_normalized, give.attr=F)
+
+set.seed(1)
+num_of_splits = 10
+splits = sample( rep(1:num_of_splits, ceiling(nrow(data_normalized)/num_of_splits) ), nrow(data_normalized) )
+
+#check for uniform-distribution
+summary(as.factor(splits))
+str(splits)
+train = data_normalized[splits!=1,]
+test = data_normalized[splits==1,]
+
+if (!require("class")) {
+  install.packages("class", repos = "https://cran.rstudio.com/")
+  library(class)
+} else {
+  library(class)
+}
+
+possible_ks = seq(1,20, by=1)
+accuracy = numeric(length(possible_ks))
+split_acc = numeric(10)
+
+for (ks in possible_ks) { 
+  j = possible_ks[ks]
+  for (i in 1:10) {
+    # create 10 training and test sets for 10-fold cross validation
+    train_i = data_normalized[splits != i,]
+    test_i  = data_normalized[splits == i,]
+    
+    # columns with normalized predictors and target variable
+    predictors_train_i = train_i[, c(5,6,7,11,12,14)]
+    
+    predictors_test_i = test_i[, c(5,6,7,11,12,14)]
+
+    target_train_i = train_i[, 15]
+    target_test_i = test_i[, 15]
+    
+    est_i = knn(train = predictors_train_i, test = predictors_test_i, 
+                cl = target_train_i, k = j)
+    split_acc[i] = mean(est_i == target_test_i)
+  }
+  accuracy[j] = mean(split_acc)
+}
+
+# optimal k
+ind = which.max(accuracy)
+best_k = possible_ks[ind]
+best_acc = accuracy[ind]
+
+best_k
+accuracy
+
+
+predictors = c(5,6,7,11,12,14)
+
+esttrain = knn(train = train[, predictors], test = train[, predictors], 
+          cl = train[, 15], k = best_k)
+table(esttrain, train[,15])
+accuracy_esttrain = (34793+19)/(34793+19+11+969)
+accuracy_esttrain
+
+est = knn(train = train[, predictors], test = test[, predictors], 
+          cl = train[, 15], k = best_k)
+table(est, test[,15])
+accuracy_est = (3881)/(3881+2+94)
+accuracy_est
+
+esttest = knn(train = test[, predictors], test = test[, predictors], 
+          cl = test[, 15], k = best_k)
+table(esttest, test[,15])
+accuracy_esttest = (3883)/(94+3883)
+
+#how they categorize with Supporter.Status.
+plot(data_normalized[, predictors], col=data_normalized$Supporter.Status.)
+
+# how they categorize with knn.cv
+es = knn.cv(train = data_normalized[, predictors], cl=data_normalized[, 15], k = best_k)
+plot(data_normalized[, predictors], col=es)
+```

@@ -245,8 +245,6 @@ a = table(test_without_username$Supporter.Status., test_balanced2_result)
 table(test_without_username$Supporter.Status., test_balanced2_result)
 ```
 ```{r}
-#(2914+524)/4328
-(3450+44)/3977
 proportions(a,1)
 ```
 ```{r}
